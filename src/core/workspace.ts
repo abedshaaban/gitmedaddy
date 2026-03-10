@@ -16,6 +16,7 @@ export interface CheckoutWorkspaceInput {
   branchName: string;
   baseBranchOverride?: string | undefined;
   cwd: string;
+  createNewBranch?: boolean;
 }
 
 export interface CheckoutWorkspaceResult {
@@ -28,7 +29,12 @@ export interface CheckoutWorkspaceResult {
 export async function checkoutWorkspace(
   input: CheckoutWorkspaceInput
 ): Promise<CheckoutWorkspaceResult> {
-  const { branchName, baseBranchOverride, cwd } = input;
+  const {
+    branchName,
+    baseBranchOverride,
+    cwd,
+    createNewBranch = false,
+  } = input;
 
   const projectRoot = findProjectRoot(cwd);
   if (!projectRoot) {
@@ -38,7 +44,13 @@ export async function checkoutWorkspace(
   const config = await loadConfig(projectRoot);
   const state = await loadState(projectRoot);
 
-  const baseBranch = baseBranchOverride ?? config.defaultBaseBranch;
+  // When explicitly creating a new branch (-n/--new), always base it on the
+  // configured default base branch from the project settings, ignoring any
+  // override. This guarantees we fetch and branch from the "main" branch
+  // defined in the config.
+  const baseBranch = createNewBranch
+    ? config.defaultBaseBranch
+    : baseBranchOverride ?? config.defaultBaseBranch;
 
   const gitDir = path.join(projectRoot, ".gmd", "repo.git");
 
@@ -59,10 +71,8 @@ export async function checkoutWorkspace(
   }
 
   const workspaceDir = path.join(projectRoot, folderSlug);
-  const codeDir = path.join(workspaceDir, "code");
-
   try {
-    await fs.mkdir(codeDir, { recursive: false });
+    await fs.mkdir(workspaceDir, { recursive: false });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
       throw new Error("workspace folder already exists");
@@ -70,13 +80,13 @@ export async function checkoutWorkspace(
     throw error;
   }
 
-  await ensureLocalBranch(gitDir, branchName, baseBranch);
-  await createWorktree(gitDir, codeDir, branchName);
+  await ensureLocalBranch(gitDir, branchName, baseBranch, createNewBranch);
+  await createWorktree(gitDir, workspaceDir, branchName);
 
   const newEntry = {
     branch: branchName,
     folder: folderSlug,
-    path: path.join(folderSlug, "code"),
+    path: folderSlug,
     baseBranch,
     createdAt: new Date().toISOString(),
   };
@@ -89,7 +99,7 @@ export async function checkoutWorkspace(
 
   return {
     projectRoot,
-    workspacePath: codeDir,
+    workspacePath: workspaceDir,
     branch: branchName,
     baseBranch,
   };

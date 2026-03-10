@@ -79,8 +79,56 @@ export async function ensureBaseBranchExists(
 export async function ensureLocalBranch(
   gitDir: string,
   branch: string,
-  baseBranch: string
+  baseBranch: string,
+  createNewBranch: boolean
 ): Promise<void> {
+  // If explicitly creating a new branch, always base it on the configured base branch
+  if (createNewBranch) {
+    // "Pull" the base branch in the bare repo by force-aligning the local
+    // base branch ref to the latest remote ref. This happens after a fetch,
+    // so refs/remotes/origin/<baseBranch> is up to date.
+    await git(
+      ["branch", "-f", baseBranch, `refs/remotes/origin/${baseBranch}`],
+      {
+        gitDir,
+      },
+    );
+
+    try {
+      await git(["show-ref", "--verify", `refs/heads/${branch}`], { gitDir });
+      return;
+    } catch {
+      // fall through and create branch
+    }
+
+    await git(
+      ["branch", branch, `refs/remotes/origin/${baseBranch}`],
+      {
+        gitDir,
+      },
+    );
+    return;
+  }
+
+  // Try to use an existing remote branch if it exists
+  try {
+    await git(["rev-parse", `refs/remotes/origin/${branch}`], { gitDir });
+
+    // "Pull" the branch we are checking out from by force-aligning the local
+    // branch ref to the latest remote ref. This keeps the bare repo in sync
+    // with origin for that branch.
+    await git(
+      ["branch", "-f", branch, `refs/remotes/origin/${branch}`],
+      {
+        gitDir,
+      },
+    );
+    return;
+  } catch {
+    // Remote branch doesn't exist - fall back to creating from base branch
+  }
+
+  // Fallback behavior: create from the base branch (previous default behavior)
   try {
     await git(["show-ref", "--verify", `refs/heads/${branch}`], { gitDir });
     return;

@@ -1,6 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { initBareRepo, detectDefaultBranch, ensureLocalBranch, createWorktree } from "../git/repo";
+import {
+  initBareRepo,
+  detectDefaultBranch,
+  ensureLocalBranch,
+  createWorktree,
+} from "../git/repo";
 import { saveConfig, saveState } from "../config/save";
 import type { ProjectConfig, ProjectState } from "../config/types";
 
@@ -57,13 +62,12 @@ export async function cloneProject(
 
   const defaultBranch = await detectDefaultBranch(gitDir);
 
-  await ensureLocalBranch(gitDir, defaultBranch, defaultBranch);
+  await ensureLocalBranch(gitDir, defaultBranch, defaultBranch, true);
 
   const workspaceDir = path.join(projectRoot, defaultBranch);
-  const codeDir = path.join(workspaceDir, "code");
-  await fs.mkdir(codeDir, { recursive: true });
+  await fs.mkdir(workspaceDir, { recursive: true });
 
-  await createWorktree(gitDir, codeDir, defaultBranch);
+  await createWorktree(gitDir, workspaceDir, defaultBranch);
 
   const config: ProjectConfig = {
     version: 1,
@@ -77,7 +81,7 @@ export async function cloneProject(
       {
         branch: defaultBranch,
         folder: defaultBranch,
-        path: path.join(defaultBranch, "code"),
+        path: defaultBranch,
         baseBranch: defaultBranch,
         createdAt: new Date().toISOString(),
       },
@@ -89,7 +93,7 @@ export async function cloneProject(
 
   return {
     projectRoot,
-    workspacePath: codeDir,
+    workspacePath: workspaceDir,
     defaultBranch,
   };
 }

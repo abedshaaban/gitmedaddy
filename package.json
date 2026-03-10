@@ -1,8 +1,11 @@
 {
   "name": "gitmedaddy",
   "version": "0.0.1",
-  "description": "### Thin Git integration layer",
+  "description": "Thin Git integration layer for managing multi-branch worktrees",
   "main": "dist/cli/index.js",
+  "files": [
+    "dist"
+  ],
   "bin": {
     "gitmedaddy": "dist/cli/index.js",
     "gmd": "dist/cli/index.js"
@@ -17,16 +20,23 @@
     "type": "git",
     "url": "git+https://github.com/abedshaaban/gitmedaddy.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "git",
+    "worktree",
+    "cli",
+    "branches"
+  ],
+  "author": "Abed Shaaban",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/abedshaaban/gitmedaddy/issues"
   },
   "homepage": "https://github.com/abedshaaban/gitmedaddy#readme",
   "dependencies": {
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
     "@types/node": "^25.3.5",
-    "commander": "^14.0.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

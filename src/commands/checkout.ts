@@ -9,14 +9,22 @@ export function registerCheckoutCommand(program: Command) {
       "-f, --from <base-branch>",
       "Base branch to create the workspace from",
     )
+    .option(
+      "-n, --new",
+      "Create a new branch from the base branch (similar to `git checkout -b`)",
+    )
     .description("Create a new workspace for a branch")
     .action(
-      async (branchName: string, options: { from?: string | undefined }) => {
+      async (
+        branchName: string,
+        options: { from?: string | undefined; new?: boolean | undefined },
+      ) => {
         try {
           const result = await checkoutWorkspace({
             branchName,
             baseBranchOverride: options.from,
             cwd: process.cwd(),
+            createNewBranch: options.new ?? false,
           });
           // eslint-disable-next-line no-console
           console.log(JSON.stringify(result, null, 2));
