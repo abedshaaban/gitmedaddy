@@ -8,9 +8,9 @@ export function createCli() {
   const program = new Command();
 
   program
-    .name("p-008")
-    .description("Workspace-first Git wrapper")
-    .version("1.0.0");
+    .name("gitmedaddy")
+    .description("Thin Git integration layer")
+    .version("0.0.1");
 
   registerCloneCommand(program);
   registerCheckoutCommand(program);
@@ -22,4 +22,3 @@ if (require.main === module) {
   const program = createCli();
   program.parse(process.argv);
 }
-

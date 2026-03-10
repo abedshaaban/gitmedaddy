@@ -5,7 +5,7 @@ export function registerCloneCommand(program: Command) {
   program
     .command("clone")
     .argument("<repo-url>", "Git repository URL to clone")
-    .description("Clone a Git repository into a p-008 workspace-ready project")
+    .description("Clone a Git repository into a workspace-ready project")
     .action(async (repoUrl: string) => {
       try {
         const result = await cloneProject({ repoUrl, cwd: process.cwd() });
@@ -21,4 +21,3 @@ export function registerCloneCommand(program: Command) {
       }
     });
 }
-

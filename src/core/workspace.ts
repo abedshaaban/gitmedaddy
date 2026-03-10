@@ -5,7 +5,12 @@ import { loadConfig, loadState } from "../config/load";
 import { saveState } from "../config/save";
 import type { ProjectState } from "../config/types";
 import { branchToFolderSlug, resolveSlugCollision } from "../utils/slug";
-import { fetchLatest, ensureBaseBranchExists, ensureLocalBranch, createWorktree } from "../git/repo";
+import {
+  fetchLatest,
+  ensureBaseBranchExists,
+  ensureLocalBranch,
+  createWorktree,
+} from "../git/repo";
 
 export interface CheckoutWorkspaceInput {
   branchName: string;
@@ -21,13 +26,13 @@ export interface CheckoutWorkspaceResult {
 }
 
 export async function checkoutWorkspace(
-  input: CheckoutWorkspaceInput,
+  input: CheckoutWorkspaceInput
 ): Promise<CheckoutWorkspaceResult> {
   const { branchName, baseBranchOverride, cwd } = input;
 
   const projectRoot = findProjectRoot(cwd);
   if (!projectRoot) {
-    throw new Error("not inside a p-008 project");
+    throw new Error("not inside a gitmedaddy project");
   }
 
   const config = await loadConfig(projectRoot);
@@ -35,7 +40,7 @@ export async function checkoutWorkspace(
 
   const baseBranch = baseBranchOverride ?? config.defaultBaseBranch;
 
-  const gitDir = path.join(projectRoot, ".p-008", "repo.git");
+  const gitDir = path.join(projectRoot, ".gmd", "repo.git");
 
   await fetchLatest(gitDir);
   await ensureBaseBranchExists(gitDir, baseBranch);
@@ -48,9 +53,7 @@ export async function checkoutWorkspace(
     throw new Error("workspace folder already exists");
   }
 
-  const existingBranch = state.workspaces.find(
-    (w) => w.branch === branchName,
-  );
+  const existingBranch = state.workspaces.find((w) => w.branch === branchName);
   if (existingBranch) {
     throw new Error("branch already exists in a conflicting way");
   }
@@ -91,4 +94,3 @@ export async function checkoutWorkspace(
     baseBranch,
   };
 }
-

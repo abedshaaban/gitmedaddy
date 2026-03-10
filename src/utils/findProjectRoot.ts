@@ -4,10 +4,10 @@ import fs from "node:fs";
 export function findProjectRoot(startDir: string): string | null {
   let current = path.resolve(startDir);
 
-  // Walk upwards until we find .p-008/config.json or hit filesystem root
+  // Walk upwards until we find .gmd/config.json or hit filesystem root
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const configPath = path.join(current, ".p-008", "config.json");
+    const configPath = path.join(current, ".gmd", "config.json");
     if (fs.existsSync(configPath)) {
       return current;
     }
@@ -20,4 +20,3 @@ export function findProjectRoot(startDir: string): string | null {
     current = parent;
   }
 }
-
