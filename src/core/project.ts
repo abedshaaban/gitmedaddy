@@ -31,13 +31,14 @@ function inferProjectNameFromUrl(repoUrl: string): string {
       throw new Error("invalid repo URL");
     }
     const withoutTrailingSlash = repoUrl.replace(/\/+$/, "");
-    const last = withoutTrailingSlash.split("/").filter(Boolean).pop() ?? "project";
+    const last =
+      withoutTrailingSlash.split("/").filter(Boolean).pop() ?? "project";
     return last.replace(/\.git$/i, "") || "project";
   }
 }
 
 export async function cloneProject(
-  input: CloneProjectInput,
+  input: CloneProjectInput
 ): Promise<CloneProjectResult> {
   const { repoUrl, cwd } = input;
 
@@ -97,4 +98,3 @@ export async function cloneProject(
     defaultBranch,
   };
 }
-
