@@ -7,17 +7,17 @@ export function registerCheckoutCommand(program: Command) {
     .argument("<branch-name>", "Name of the new workspace branch")
     .option(
       "-f, --from <base-branch>",
-      "Base branch to create the workspace from",
+      "Base branch to create the workspace from"
     )
     .option(
       "-n, --new",
-      "Create a new branch from the base branch (similar to `git checkout -b`)",
+      "Create a new branch from the base branch (similar to `git checkout -b`)"
     )
     .description("Create a new workspace for a branch")
     .action(
       async (
         branchName: string,
-        options: { from?: string | undefined; new?: boolean | undefined },
+        options: { from?: string | undefined; new?: boolean | undefined }
       ) => {
         try {
           const result = await checkoutWorkspace({
@@ -35,7 +35,6 @@ export function registerCheckoutCommand(program: Command) {
           console.error(message);
           process.exitCode = 1;
         }
-      },
+      }
     );
 }
-
