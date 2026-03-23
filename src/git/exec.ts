@@ -21,10 +21,7 @@ export class GitCommandError extends Error {
   }
 }
 
-export function git(
-  args: string[],
-  options: GitExecOptions = {},
-): Promise<GitExecResult> {
+export function git(args: string[], options: GitExecOptions = {}): Promise<GitExecResult> {
   const fullArgs = [...(options.gitDir ? ["--git-dir", options.gitDir] : []), ...args];
 
   return new Promise<GitExecResult>((resolve, reject) => {
@@ -54,16 +51,8 @@ export function git(
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
-        reject(
-          new GitCommandError(
-            "Git command failed",
-            fullArgs,
-            code,
-            stderr || stdout,
-          ),
-        );
+        reject(new GitCommandError("Git command failed", fullArgs, code, stderr || stdout));
       }
     });
   });
 }
-

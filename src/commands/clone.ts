@@ -13,8 +13,7 @@ export function registerCloneCommand(program: Command) {
         // eslint-disable-next-line no-console
         console.log(JSON.stringify(result, null, 2));
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : "Unknown error occurred";
+        const message = error instanceof Error ? error.message : "Unknown error occurred";
         // eslint-disable-next-line no-console
         console.error(message);
         process.exitCode = 1;

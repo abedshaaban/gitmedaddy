@@ -27,14 +27,9 @@ export interface CheckoutWorkspaceResult {
 }
 
 export async function checkoutWorkspace(
-  input: CheckoutWorkspaceInput
+  input: CheckoutWorkspaceInput,
 ): Promise<CheckoutWorkspaceResult> {
-  const {
-    branchName,
-    baseBranchOverride,
-    cwd,
-    createNewBranch = false,
-  } = input;
+  const { branchName, baseBranchOverride, cwd, createNewBranch = false } = input;
 
   const projectRoot = findProjectRoot(cwd);
   if (!projectRoot) {
@@ -50,7 +45,7 @@ export async function checkoutWorkspace(
   // defined in the config.
   const baseBranch = createNewBranch
     ? config.defaultBaseBranch
-    : baseBranchOverride ?? config.defaultBaseBranch;
+    : (baseBranchOverride ?? config.defaultBaseBranch);
 
   const gitDir = path.join(projectRoot, ".gmd", "repo.git");
 

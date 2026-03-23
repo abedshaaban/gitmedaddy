@@ -13,10 +13,7 @@ export function branchToFolderSlug(branch: string): string {
   return trimmed || "workspace";
 }
 
-export function resolveSlugCollision(
-  desiredSlug: string,
-  existingSlugs: Set<string>
-): string {
+export function resolveSlugCollision(desiredSlug: string, existingSlugs: Set<string>): string {
   if (!existingSlugs.has(desiredSlug)) return desiredSlug;
 
   for (let i = 0; i < COLLISION_SUFFIX_CHARS.length; i += 1) {

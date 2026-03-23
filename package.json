@@ -15,7 +15,9 @@
     "build": "tsc",
     "start": "node dist/cli/index.js",
     "dev": "ts-node src/cli/index.ts",
-    "cipublish": "node publish.ts"
+    "cipublish": "node publish.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "repository": {
     "type": "git",
@@ -40,6 +42,8 @@
     "@tanstack/eslint-config": "^0.4.0",
     "@tanstack/publish-config": "^0.2.2",
     "@types/node": "^25.3.5",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

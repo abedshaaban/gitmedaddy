@@ -6,10 +6,7 @@ export async function initBareRepo(projectRoot: string, repoUrl: string) {
 
   await git(["clone", "--bare", repoUrl, gitDir], { cwd: projectRoot });
 
-  await git(
-    ["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"],
-    { gitDir }
-  );
+  await git(["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"], { gitDir });
 
   await git(["fetch", "origin"], { gitDir });
 
@@ -22,10 +19,9 @@ export async function detectDefaultBranch(gitDir: string): Promise<string> {
   // 2) Fallback to parsing `git remote show origin`
   // 3) Fallback to common names: main, master
   try {
-    const { stdout } = await git(
-      ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-      { gitDir }
-    );
+    const { stdout } = await git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], {
+      gitDir,
+    });
     const fullRef = stdout.trim();
     const parts = fullRef.split("/");
     if (parts.length > 1 && parts[1]) {
@@ -65,10 +61,7 @@ export async function fetchLatest(gitDir: string): Promise<void> {
   await git(["fetch", "origin"], { gitDir });
 }
 
-export async function ensureBaseBranchExists(
-  gitDir: string,
-  baseBranch: string
-): Promise<void> {
+export async function ensureBaseBranchExists(gitDir: string, baseBranch: string): Promise<void> {
   try {
     await git(["rev-parse", `refs/remotes/origin/${baseBranch}`], { gitDir });
   } catch {
@@ -80,19 +73,16 @@ export async function ensureLocalBranch(
   gitDir: string,
   branch: string,
   baseBranch: string,
-  createNewBranch: boolean
+  createNewBranch: boolean,
 ): Promise<void> {
   // If explicitly creating a new branch, always base it on the configured base branch
   if (createNewBranch) {
     // "Pull" the base branch in the bare repo by force-aligning the local
     // base branch ref to the latest remote ref. This happens after a fetch,
     // so refs/remotes/origin/<baseBranch> is up to date.
-    await git(
-      ["branch", "-f", baseBranch, `refs/remotes/origin/${baseBranch}`],
-      {
-        gitDir,
-      },
-    );
+    await git(["branch", "-f", baseBranch, `refs/remotes/origin/${baseBranch}`], {
+      gitDir,
+    });
 
     try {
       await git(["show-ref", "--verify", `refs/heads/${branch}`], { gitDir });
@@ -101,12 +91,9 @@ export async function ensureLocalBranch(
       // fall through and create branch
     }
 
-    await git(
-      ["branch", branch, `refs/remotes/origin/${baseBranch}`],
-      {
-        gitDir,
-      },
-    );
+    await git(["branch", branch, `refs/remotes/origin/${baseBranch}`], {
+      gitDir,
+    });
     return;
   }
 
@@ -117,12 +104,9 @@ export async function ensureLocalBranch(
     // "Pull" the branch we are checking out from by force-aligning the local
     // branch ref to the latest remote ref. This keeps the bare repo in sync
     // with origin for that branch.
-    await git(
-      ["branch", "-f", branch, `refs/remotes/origin/${branch}`],
-      {
-        gitDir,
-      },
-    );
+    await git(["branch", "-f", branch, `refs/remotes/origin/${branch}`], {
+      gitDir,
+    });
     return;
   } catch {
     // Remote branch doesn't exist - fall back to creating from base branch
@@ -144,7 +128,7 @@ export async function ensureLocalBranch(
 export async function createWorktree(
   gitDir: string,
   worktreePath: string,
-  branch: string
+  branch: string,
 ): Promise<void> {
   await git(["worktree", "add", worktreePath, branch], { gitDir });
 }

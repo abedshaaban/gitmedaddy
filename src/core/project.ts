@@ -1,11 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  initBareRepo,
-  detectDefaultBranch,
-  ensureLocalBranch,
-  createWorktree,
-} from "../git/repo";
+import { initBareRepo, detectDefaultBranch, ensureLocalBranch, createWorktree } from "../git/repo";
 import { saveConfig, saveState } from "../config/save";
 import type { ProjectConfig, ProjectState } from "../config/types";
 
@@ -31,15 +26,12 @@ function inferProjectNameFromUrl(repoUrl: string): string {
       throw new Error("invalid repo URL");
     }
     const withoutTrailingSlash = repoUrl.replace(/\/+$/, "");
-    const last =
-      withoutTrailingSlash.split("/").filter(Boolean).pop() ?? "project";
+    const last = withoutTrailingSlash.split("/").filter(Boolean).pop() ?? "project";
     return last.replace(/\.git$/i, "") || "project";
   }
 }
 
-export async function cloneProject(
-  input: CloneProjectInput
-): Promise<CloneProjectResult> {
+export async function cloneProject(input: CloneProjectInput): Promise<CloneProjectResult> {
   const { repoUrl, cwd } = input;
 
   const projectName = inferProjectNameFromUrl(repoUrl);

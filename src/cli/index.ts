@@ -7,10 +7,7 @@ import { registerCheckoutCommand } from "../commands/checkout";
 export function createCli() {
   const program = new Command();
 
-  program
-    .name("gitmedaddy")
-    .description("Thin Git integration layer")
-    .version("0.0.1");
+  program.name("gitmedaddy").description("Thin Git integration layer").version("0.0.1");
 
   registerCloneCommand(program);
   registerCheckoutCommand(program);
