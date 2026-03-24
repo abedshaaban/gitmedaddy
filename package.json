@@ -17,6 +17,8 @@
     "start": "node dist/cli/index.js",
     "dev": "ts-node src/cli/index.ts",
     "cipublish": "node publish.mjs",
+    "lint": "eslint .",
+    "check": "pnpm run build && pnpm run format:check && pnpm run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -44,6 +46,7 @@
     "@tanstack/eslint-config": "^0.4.0",
     "@tanstack/publish-config": "^0.2.2",
     "@types/node": "^25.3.5",
+    "eslint": "^10.1.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "ts-node": "^10.9.2",

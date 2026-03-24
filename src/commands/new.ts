@@ -1,7 +1,7 @@
-import type { Command } from 'commander'
 import { createNewWorkspace } from '../core/workspace'
 import { branchToFolderSlug } from '../utils/slug'
 import { promptInput } from '../utils/prompt'
+import type { Command } from 'commander'
 
 export function registerNewCommand(program: Command) {
   program
@@ -25,18 +25,16 @@ export function registerNewCommand(program: Command) {
         })
 
         if (result.usedExistingRemoteBranch) {
-          // eslint-disable-next-line no-console
           console.warn(
             `\x1b[33mWarning: branch "${branchName}" already exists on origin; ` +
               `it cannot be created again. Use "gmd show ${branchName}" to display it.\x1b[0m`
           )
         }
 
-        // eslint-disable-next-line no-console
         console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error occurred'
-        // eslint-disable-next-line no-console
+
         console.error(message)
         process.exitCode = 1
       }

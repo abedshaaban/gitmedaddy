@@ -13,5 +13,5 @@ export interface WorkspaceEntry {
 
 export interface ProjectState {
   defaultBaseBranch: string
-  workspaces: WorkspaceEntry[]
+  workspaces: Array<WorkspaceEntry>
 }

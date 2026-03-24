@@ -1,5 +1,5 @@
-import type { Command } from 'commander'
 import { cloneProject } from '../core/project'
+import type { Command } from 'commander'
 
 export function registerCloneCommand(program: Command) {
   program
@@ -10,11 +10,11 @@ export function registerCloneCommand(program: Command) {
       try {
         const result = await cloneProject({ repoUrl, cwd: process.cwd() })
         // Keep output simple and explicit
-        // eslint-disable-next-line no-console
+
         console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error occurred'
-        // eslint-disable-next-line no-console
+
         console.error(message)
         process.exitCode = 1
       }

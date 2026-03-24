@@ -15,7 +15,7 @@ export interface GitExecResult {
 export class GitCommandError extends Error {
   constructor(
     message: string,
-    public readonly command: string[],
+    public readonly command: Array<string>,
     public readonly code: number | null,
     public readonly stderr: string
   ) {
@@ -23,7 +23,7 @@ export class GitCommandError extends Error {
   }
 }
 
-export function git(args: string[], options: GitExecOptions = {}): Promise<GitExecResult> {
+export function git(args: Array<string>, options: GitExecOptions = {}): Promise<GitExecResult> {
   const fullArgs = [...(options.gitDir ? ['--git-dir', options.gitDir] : []), ...args]
   const inherit = options.inheritStdio === true
 

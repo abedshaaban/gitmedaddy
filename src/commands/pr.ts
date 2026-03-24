@@ -1,5 +1,5 @@
-import type { Command } from 'commander'
 import { createPullRequest } from '../core/pr'
+import type { Command } from 'commander'
 
 export function registerPrCommand(program: Command) {
   program
@@ -8,23 +8,21 @@ export function registerPrCommand(program: Command) {
     .option('--title <title>', 'Custom pull request title')
     .option('--draft', 'Create pull request as draft')
     .description('Create a GitHub pull request for the current workspace branch')
-    .action(
-      async (options: { base?: string | undefined; title?: string | undefined; draft?: boolean | undefined }) => {
-        try {
-          const result = await createPullRequest({
-            cwd: process.cwd(),
-            baseBranchOverride: options.base,
-            titleOverride: options.title,
-            draft: options.draft ?? false
-          })
-          // eslint-disable-next-line no-console
-          console.log(JSON.stringify(result, null, 2))
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'Unknown error occurred'
-          // eslint-disable-next-line no-console
-          console.error(message)
-          process.exitCode = 1
-        }
+    .action(async (options: { base?: string | undefined; title?: string | undefined; draft?: boolean | undefined }) => {
+      try {
+        const result = await createPullRequest({
+          cwd: process.cwd(),
+          baseBranchOverride: options.base,
+          titleOverride: options.title,
+          draft: options.draft ?? false
+        })
+
+        console.log(JSON.stringify(result, null, 2))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error occurred'
+
+        console.error(message)
+        process.exitCode = 1
       }
-    )
+    })
 }

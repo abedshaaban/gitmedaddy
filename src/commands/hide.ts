@@ -1,5 +1,5 @@
-import type { Command } from 'commander'
 import { hideWorkspace } from '../core/workspace'
+import type { Command } from 'commander'
 
 export function registerHideCommand(program: Command) {
   program
@@ -13,11 +13,11 @@ export function registerHideCommand(program: Command) {
           branchName,
           cwd: process.cwd()
         })
-        // eslint-disable-next-line no-console
+
         console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error occurred'
-        // eslint-disable-next-line no-console
+
         console.error(message)
         process.exitCode = 1
       }

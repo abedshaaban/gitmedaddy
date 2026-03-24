@@ -3,7 +3,7 @@ import { input, select } from '@inquirer/prompts'
 export async function promptInput(question: string, defaultValue = ''): Promise<string> {
   const answer = await input({
     message: question,
-    ...(defaultValue !== '' ? { default: defaultValue } : {}),
+    ...(defaultValue !== '' ? { default: defaultValue } : {})
   })
 
   const trimmed = answer.trim()
@@ -11,7 +11,7 @@ export async function promptInput(question: string, defaultValue = ''): Promise<
   return trimmed
 }
 
-export async function promptSelect(question: string, options: string[], defaultValue: string): Promise<string> {
+export async function promptSelect(question: string, options: Array<string>, defaultValue: string): Promise<string> {
   if (options.length === 0) {
     throw new Error('no options available for selection')
   }
@@ -21,6 +21,6 @@ export async function promptSelect(question: string, options: string[], defaultV
   return select({
     message: question,
     choices: options.map((opt) => ({ name: opt, value: opt })),
-    default: effectiveDefault,
+    default: effectiveDefault
   })
 }

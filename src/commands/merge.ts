@@ -1,5 +1,5 @@
-import type { Command } from 'commander'
 import { mergeWorkspace } from '../core/workspace'
+import type { Command } from 'commander'
 
 export function registerMergeCommand(program: Command) {
   program
@@ -14,11 +14,11 @@ export function registerMergeCommand(program: Command) {
           fromBranch: options.from,
           toBranch: options.to
         })
-        // eslint-disable-next-line no-console
+
         console.log(JSON.stringify(result, null, 2))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error occurred'
-        // eslint-disable-next-line no-console
+
         console.error(message)
         process.exitCode = 1
       }

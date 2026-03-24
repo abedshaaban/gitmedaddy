@@ -1,14 +1,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import {
-  detectDefaultBranchFromRemoteUrl,
-  listRemoteBranchesFromUrl,
-  resolveGitCommonDir
-} from '../git/repo'
+import { detectDefaultBranchFromRemoteUrl, listRemoteBranchesFromUrl, resolveGitCommonDir } from '../git/repo'
 import { git } from '../git/exec'
 import { saveConfig, saveState } from '../config/save'
-import type { ProjectConfig, ProjectState } from '../config/types'
 import { promptSelect } from '../utils/prompt'
+import type { ProjectConfig, ProjectState } from '../config/types'
 
 export interface CloneProjectInput {
   repoUrl: string

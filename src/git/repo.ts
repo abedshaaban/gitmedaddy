@@ -21,9 +21,9 @@ export async function resolveGitCommonDirFromState(projectRoot: string, state: P
   throw new Error('no valid workspace checkout found')
 }
 
-export async function listRemoteBranchesFromUrl(repoUrl: string): Promise<string[]> {
+export async function listRemoteBranchesFromUrl(repoUrl: string): Promise<Array<string>> {
   const { stdout } = await git(['ls-remote', '--heads', repoUrl])
-  const branches: string[] = []
+  const branches: Array<string> = []
   for (const line of stdout.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed) continue
@@ -95,7 +95,7 @@ export async function detectDefaultBranch(gitDir: string): Promise<string> {
   throw new Error('remote default branch could not be resolved')
 }
 
-export async function listRemoteBranches(gitDir: string): Promise<string[]> {
+export async function listRemoteBranches(gitDir: string): Promise<Array<string>> {
   const { stdout } = await git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'], {
     gitDir
   })

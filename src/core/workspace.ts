@@ -3,20 +3,20 @@ import path from 'node:path'
 import { findProjectRoot } from '../utils/findProjectRoot'
 import { loadState } from '../config/load'
 import { saveState } from '../config/save'
-import type { ProjectState } from '../config/types'
 import { branchToFolderSlug, resolveSlugCollision } from '../utils/slug'
 import {
-  fetchLatest,
+  createWorktree,
   ensureBaseBranchExists,
   ensureLocalBranch,
-  createWorktree,
-  remoteBranchExists,
+  fetchLatest,
   localBranchExists,
-  syncLocalBranchToRemote,
+  remoteBranchExists,
   removeWorktree,
-  resolveGitCommonDirFromState
+  resolveGitCommonDirFromState,
+  syncLocalBranchToRemote
 } from '../git/repo'
 import { git } from '../git/exec'
+import type { ProjectState } from '../config/types'
 
 export interface CreateNewWorkspaceInput {
   branchName: string
@@ -66,7 +66,7 @@ export interface CleanWorkspacesInput {
 export interface CleanWorkspacesResult {
   projectRoot: string
   keptBranch: string
-  removedBranches: string[]
+  removedBranches: Array<string>
 }
 
 export interface PullWorkspacesInput {
@@ -76,7 +76,7 @@ export interface PullWorkspacesInput {
 
 export interface PullWorkspacesResult {
   projectRoot: string
-  pulledBranches: string[]
+  pulledBranches: Array<string>
   failedBranches: Array<{ branch: string; error: string }>
 }
 
@@ -349,7 +349,7 @@ export async function cleanWorkspaces(input: CleanWorkspacesInput): Promise<Clea
   }
 
   const state = await loadState(projectRoot)
-  const removedBranches: string[] = []
+  const removedBranches: Array<string> = []
 
   for (const workspace of state.workspaces) {
     if (workspace.branch === targetKeepBranch) continue
@@ -400,7 +400,7 @@ export async function pullWorkspaces(input: PullWorkspacesInput): Promise<PullWo
         return [currentBranch]
       })()
 
-  const pulledBranches: string[] = []
+  const pulledBranches: Array<string> = []
   const failedBranches: Array<{ branch: string; error: string }> = []
 
   for (const branch of branches) {

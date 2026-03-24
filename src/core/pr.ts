@@ -32,7 +32,7 @@ function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: 
   return null
 }
 
-function runGh(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+function runGh(args: Array<string>, cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn('gh', args, {
       cwd,
@@ -84,7 +84,7 @@ export async function createPullRequest(input: CreatePullRequestInput): Promise<
 
   const baseBranch = baseBranchOverride ?? state.defaultBaseBranch
   const title = titleOverride ?? workspace.folderName
-  const goal = workspace.goal?.trim() ?? ''
+  const goal = workspace.goal.trim()
   const body = goal ? `## Goal\n${goal}\n` : ''
 
   const workspacePath = path.join(projectRoot, workspace.folderName)
