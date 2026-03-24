@@ -91,6 +91,29 @@ export interface MergeWorkspaceResult {
   targetBranch: string
 }
 
+export interface SetWorkspaceGoalInput {
+  cwd: string
+  goal: string
+  branchName?: string | undefined
+}
+
+export interface SetWorkspaceGoalResult {
+  projectRoot: string
+  branch: string
+  goal: string
+}
+
+export interface ShowWorkspaceGoalInput {
+  cwd: string
+  branchName?: string | undefined
+}
+
+export interface ShowWorkspaceGoalResult {
+  projectRoot: string
+  branch: string
+  goal: string
+}
+
 function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: ProjectState): string | null {
   const absoluteCwd = path.resolve(cwd)
   for (const workspace of state.workspaces) {
@@ -109,6 +132,22 @@ function getWorkspacePath(projectRoot: string, state: ProjectState, branch: stri
     throw new Error(`branch "${branch}" is not currently displayed`)
   }
   return path.join(projectRoot, workspace.folderName)
+}
+
+function resolveVisibleBranch(projectRoot: string, cwd: string, state: ProjectState, branchName?: string): string {
+  if (branchName) {
+    const exists = state.workspaces.some((w) => w.branch === branchName)
+    if (!exists) {
+      throw new Error(`branch "${branchName}" is hidden; show it before setting or viewing a goal`)
+    }
+    return branchName
+  }
+
+  const currentBranch = resolveCurrentWorkspaceBranch(projectRoot, cwd, state)
+  if (!currentBranch) {
+    throw new Error('current directory is not inside a displayed workspace; pass a branch name')
+  }
+  return currentBranch
 }
 
 /**
@@ -408,5 +447,58 @@ export async function mergeWorkspace(input: MergeWorkspaceInput): Promise<MergeW
     projectRoot,
     sourceBranch,
     targetBranch
+  }
+}
+
+export async function setWorkspaceGoal(input: SetWorkspaceGoalInput): Promise<SetWorkspaceGoalResult> {
+  const { cwd, goal, branchName } = input
+
+  const projectRoot = findProjectRoot(cwd)
+  if (!projectRoot) {
+    throw new Error('not inside a gitmedaddy project')
+  }
+
+  const state = await loadState(projectRoot)
+  const targetBranch = resolveVisibleBranch(projectRoot, cwd, state, branchName)
+
+  const newState: ProjectState = {
+    defaultBaseBranch: state.defaultBaseBranch,
+    workspaces: state.workspaces.map((w) =>
+      w.branch === targetBranch
+        ? {
+            ...w,
+            goal: goal.trim()
+          }
+        : w
+    )
+  }
+  await saveState(projectRoot, newState)
+
+  return {
+    projectRoot,
+    branch: targetBranch,
+    goal: goal.trim()
+  }
+}
+
+export async function showWorkspaceGoal(input: ShowWorkspaceGoalInput): Promise<ShowWorkspaceGoalResult> {
+  const { cwd, branchName } = input
+
+  const projectRoot = findProjectRoot(cwd)
+  if (!projectRoot) {
+    throw new Error('not inside a gitmedaddy project')
+  }
+
+  const state = await loadState(projectRoot)
+  const targetBranch = resolveVisibleBranch(projectRoot, cwd, state, branchName)
+  const entry = state.workspaces.find((w) => w.branch === targetBranch)
+  if (!entry) {
+    throw new Error(`branch "${targetBranch}" is hidden; show it before setting or viewing a goal`)
+  }
+
+  return {
+    projectRoot,
+    branch: targetBranch,
+    goal: entry.goal
   }
 }
