@@ -1,7 +1,6 @@
 {
   "name": "gitmedaddy",
-  "version": "0.0.2",
-  "type": "module",
+  "version": "0.0.3",
   "description": "Thin Git integration layer for managing multi-branch worktrees",
   "main": "dist/cli/index.js",
   "files": [
@@ -13,9 +12,10 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "start": "node dist/cli/index.js",
     "dev": "ts-node src/cli/index.ts",
-    "cipublish": "node publish.ts",
+    "cipublish": "node publish.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

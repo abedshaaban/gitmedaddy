@@ -8,7 +8,7 @@ await publish({
       prerelease: false
     }
   },
-  packages: [{ name: 'gitmedaddy', packageDir: 'dist' }],
+  packages: [{ name: 'gitmedaddy', packageDir: '.' }],
   rootDir: '.',
   tag: 'git'
   // branch: process.env.BRANCH,
