@@ -215,9 +215,14 @@ export async function ensureLocalBranch(
       // fall through and create branch
     }
 
-    await git(['branch', branch, `refs/remotes/origin/${baseBranch}`], {
-      gitDir
-    })
+    // When the new branch name differs from the base, Git would otherwise set
+    // branch.<name>.merge to the base's remote (e.g. track origin/main), so the
+    // UI shows "up to date with origin/main" instead of prompting to publish the new branch.
+    if (branch === baseBranch) {
+      await git(['branch', branch, `refs/remotes/origin/${baseBranch}`], { gitDir })
+    } else {
+      await git(['branch', '--no-track', branch, `refs/remotes/origin/${baseBranch}`], { gitDir })
+    }
     return
   }
 
@@ -242,9 +247,11 @@ export async function ensureLocalBranch(
     // fall through and create branch
   }
 
-  await git(['branch', branch, `refs/remotes/origin/${baseBranch}`], {
-    gitDir
-  })
+  if (branch === baseBranch) {
+    await git(['branch', branch, `refs/remotes/origin/${baseBranch}`], { gitDir })
+  } else {
+    await git(['branch', '--no-track', branch, `refs/remotes/origin/${baseBranch}`], { gitDir })
+  }
 }
 
 export async function createWorktree(gitDir: string, worktreePath: string, branch: string): Promise<void> {
