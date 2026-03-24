@@ -27,6 +27,16 @@ export interface CreateNewWorkspaceResult {
   usedExistingRemoteBranch: boolean;
 }
 
+/**
+ * Creates a workspace for the requested branch.
+ *
+ * Flow:
+ * 1) Resolve project root and load `state/branches.json`.
+ * 2) Fetch latest refs from origin before any branch checks.
+ * 3) If target branch exists on origin, use it locally; otherwise create it from base branch.
+ * 4) Create a new worktree folder for the branch.
+ * 5) Persist the new workspace entry back into state.
+ */
 export async function createNewWorkspace(
   input: CreateNewWorkspaceInput,
 ): Promise<CreateNewWorkspaceResult> {

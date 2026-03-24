@@ -17,6 +17,7 @@ export function registerNewCommand(program: Command) {
         });
 
         if (result.usedExistingRemoteBranch) {
+          // TODO: When `display` command is implemented, add this branch to the view/list output.
           // eslint-disable-next-line no-console
           console.warn(
             `\x1b[33mWarning: branch "${branchName}" already exists on origin; ` +
