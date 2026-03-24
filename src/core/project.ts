@@ -1,13 +1,11 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import {
-  initBareRepo,
-  detectDefaultBranch,
-  ensureLocalBranch,
-  createWorktree,
-  fetchLatest,
-  listRemoteBranches
+  detectDefaultBranchFromRemoteUrl,
+  listRemoteBranchesFromUrl,
+  resolveGitCommonDir
 } from '../git/repo'
+import { git } from '../git/exec'
 import { saveConfig, saveState } from '../config/save'
 import type { ProjectConfig, ProjectState } from '../config/types'
 import { promptSelect } from '../utils/prompt'
@@ -59,29 +57,29 @@ export async function cloneProject(input: CloneProjectInput): Promise<CloneProje
     throw new Error('target folder is not empty')
   }
 
-  const gitDir = await initBareRepo(projectRoot, repoUrl)
+  const remoteBranches = await listRemoteBranchesFromUrl(repoUrl)
+  if (remoteBranches.length === 0) {
+    throw new Error('no remote branches found')
+  }
 
-  const detectedDefaultBranch = await detectDefaultBranch(gitDir)
-  await fetchLatest(gitDir)
-  const remoteBranches = await listRemoteBranches(gitDir)
-
+  const detectedRemoteDefault = await detectDefaultBranchFromRemoteUrl(repoUrl)
   const preferredDefault = remoteBranches.includes('main')
     ? 'main'
-    : remoteBranches.includes(detectedDefaultBranch)
-      ? detectedDefaultBranch
+    : detectedRemoteDefault && remoteBranches.includes(detectedRemoteDefault)
+      ? detectedRemoteDefault
       : remoteBranches[0]!
+
   const defaultBranch = await promptSelect(
     'Select your default base branch for new workspaces',
     remoteBranches,
     preferredDefault
   )
 
-  await ensureLocalBranch(gitDir, defaultBranch, defaultBranch, true)
-
   const workspaceDir = path.join(projectRoot, defaultBranch)
-  await fs.mkdir(workspaceDir, { recursive: true })
+  await git(['clone', '-b', defaultBranch, repoUrl, workspaceDir], { cwd: projectRoot })
 
-  await createWorktree(gitDir, workspaceDir, defaultBranch)
+  const commonDir = await resolveGitCommonDir(workspaceDir)
+  await git(['fetch', 'origin'], { gitDir: commonDir })
 
   const config: ProjectConfig = {
     version: 1,

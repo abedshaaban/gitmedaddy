@@ -13,7 +13,8 @@ import {
   remoteBranchExists,
   localBranchExists,
   syncLocalBranchToRemote,
-  removeWorktree
+  removeWorktree,
+  resolveGitCommonDirFromState
 } from '../git/repo'
 import { git } from '../git/exec'
 
@@ -116,14 +117,17 @@ export interface ShowWorkspaceGoalResult {
 
 function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: ProjectState): string | null {
   const absoluteCwd = path.resolve(cwd)
+  let best: { branch: string; root: string } | null = null
   for (const workspace of state.workspaces) {
-    const workspaceRoot = path.join(projectRoot, workspace.folderName)
+    const workspaceRoot = path.resolve(path.join(projectRoot, workspace.folderName))
     const relative = path.relative(workspaceRoot, absoluteCwd)
     if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
-      return workspace.branch
+      if (!best || workspaceRoot.length > best.root.length) {
+        best = { branch: workspace.branch, root: workspaceRoot }
+      }
     }
   }
-  return null
+  return best?.branch ?? null
 }
 
 function getWorkspacePath(projectRoot: string, state: ProjectState, branch: string): string {
@@ -172,7 +176,7 @@ export async function createNewWorkspace(input: CreateNewWorkspaceInput): Promis
 
   const baseBranch = baseBranchOverride ?? state.defaultBaseBranch
 
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
 
   await fetchLatest(gitDir)
   await ensureBaseBranchExists(gitDir, baseBranch)
@@ -240,7 +244,7 @@ export async function showWorkspace(input: ShowWorkspaceInput): Promise<ShowWork
     throw new Error('branch is already displayed')
   }
 
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
   await fetchLatest(gitDir)
 
   const hasRemoteBranch = await remoteBranchExists(gitDir, branchName)
@@ -302,8 +306,11 @@ export async function hideWorkspace(input: HideWorkspaceInput): Promise<HideWork
   if (!entry) {
     throw new Error('branch is not currently displayed')
   }
+  if (entry.folderName === '.') {
+    throw new Error('cannot hide the repository root workspace')
+  }
 
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
   const workspaceDir = path.join(projectRoot, entry.folderName)
   await removeWorktree(gitDir, workspaceDir)
 
@@ -328,10 +335,9 @@ export async function cleanWorkspaces(input: CleanWorkspacesInput): Promise<Clea
     throw new Error('not inside a gitmedaddy project')
   }
 
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
-  await fetchLatest(gitDir)
-
   const initialState = await loadState(projectRoot)
+  const gitDir = await resolveGitCommonDirFromState(projectRoot, initialState)
+  await fetchLatest(gitDir)
   const targetKeepBranch = keepBranch ?? initialState.defaultBaseBranch
 
   const isDisplayed = initialState.workspaces.some((w) => w.branch === targetKeepBranch)
@@ -347,6 +353,9 @@ export async function cleanWorkspaces(input: CleanWorkspacesInput): Promise<Clea
 
   for (const workspace of state.workspaces) {
     if (workspace.branch === targetKeepBranch) continue
+    if (workspace.folderName === '.') {
+      throw new Error('cannot remove the repository root workspace; choose a different branch to keep')
+    }
     const workspaceDir = path.join(projectRoot, workspace.folderName)
     await removeWorktree(gitDir, workspaceDir)
     removedBranches.push(workspace.branch)
@@ -378,10 +387,9 @@ export async function pullWorkspaces(input: PullWorkspacesInput): Promise<PullWo
     throw new Error('not inside a gitmedaddy project')
   }
 
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
-  await fetchLatest(gitDir)
-
   const state = await loadState(projectRoot)
+  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
+  await fetchLatest(gitDir)
   const branches = all
     ? state.workspaces.map((w) => w.branch)
     : (() => {
@@ -430,7 +438,7 @@ export async function mergeWorkspace(input: MergeWorkspaceInput): Promise<MergeW
   }
 
   const sourceBranch = fromBranch ?? state.defaultBaseBranch
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
 
   await fetchLatest(gitDir)
   await ensureBaseBranchExists(gitDir, sourceBranch)

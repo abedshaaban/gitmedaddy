@@ -1,7 +1,14 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { git } from '../git/exec'
-import { createWorktree, detectDefaultBranch, ensureLocalBranch, fetchLatest, listRemoteBranches } from '../git/repo'
+import {
+  createWorktree,
+  detectDefaultBranch,
+  ensureLocalBranch,
+  fetchLatest,
+  listRemoteBranches,
+  resolveGitCommonDir
+} from '../git/repo'
 import { saveConfig, saveState } from '../config/save'
 import type { ProjectConfig, ProjectState } from '../config/types'
 import { promptSelect } from '../utils/prompt'
@@ -26,9 +33,9 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     throw new Error('not inside a git repository')
   }
 
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  const branchesPath = path.join(projectRoot, 'state', 'branches.json')
   try {
-    await fs.access(gitDir)
+    await fs.access(branchesPath)
     throw new Error('gmd is already initialized in this repository')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -36,15 +43,16 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     }
   }
 
-  await git(['clone', '--bare', '.git', gitDir], { cwd: projectRoot })
-  await git(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], { gitDir })
-  await fetchLatest(gitDir)
+  const commonDir = await resolveGitCommonDir(cwd)
+  await fetchLatest(commonDir)
 
-  const detectedDefaultBranch = await detectDefaultBranch(gitDir)
-  const remoteBranches = await listRemoteBranches(gitDir)
+  const detectedDefaultBranch = await detectDefaultBranch(commonDir)
+  const remoteBranches = await listRemoteBranches(commonDir)
   const preferredDefault = remoteBranches.includes('main')
     ? 'main'
-    : (remoteBranches.includes(detectedDefaultBranch) ? detectedDefaultBranch : remoteBranches[0]!)
+    : remoteBranches.includes(detectedDefaultBranch)
+      ? detectedDefaultBranch
+      : remoteBranches[0]!
 
   const defaultBaseBranch = await promptSelect(
     'Select your default base branch for new workspaces',
@@ -52,20 +60,31 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     preferredDefault
   )
 
-  await ensureLocalBranch(gitDir, defaultBaseBranch, defaultBaseBranch, true)
+  await ensureLocalBranch(commonDir, defaultBaseBranch, defaultBaseBranch, true)
 
-  const workspaceFolderName = branchToFolderSlug(defaultBaseBranch)
-  const workspacePath = path.join(projectRoot, workspaceFolderName)
-  try {
-    await fs.mkdir(workspacePath, { recursive: false })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error(`workspace folder "${workspaceFolderName}" already exists`)
+  const { stdout: headOut } = await git(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: projectRoot })
+  const currentBranch = headOut.trim()
+
+  let workspacePath: string
+  let folderName: string
+
+  if (currentBranch !== 'HEAD' && currentBranch === defaultBaseBranch) {
+    workspacePath = projectRoot
+    folderName = '.'
+  } else {
+    const workspaceFolderName = branchToFolderSlug(defaultBaseBranch)
+    workspacePath = path.join(projectRoot, workspaceFolderName)
+    try {
+      await fs.mkdir(workspacePath, { recursive: false })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`workspace folder "${workspaceFolderName}" already exists`)
+      }
+      throw error
     }
-    throw error
+    await createWorktree(commonDir, workspacePath, defaultBaseBranch)
+    folderName = workspaceFolderName
   }
-
-  await createWorktree(gitDir, workspacePath, defaultBaseBranch)
 
   const projectName = path.basename(projectRoot)
   const config: ProjectConfig = {
@@ -79,7 +98,7 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     workspaces: [
       {
         branch: defaultBaseBranch,
-        folderName: workspaceFolderName,
+        folderName,
         goal: ''
       }
     ]

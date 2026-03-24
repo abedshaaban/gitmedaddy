@@ -16,10 +16,21 @@ function normalizeWorkspaces(parsed: Partial<ProjectState>): ProjectState['works
 }
 
 export async function loadConfig(projectRoot: string): Promise<ProjectConfig> {
-  const configPath = path.join(projectRoot, '.gmd', 'config.json')
-  const raw = await fs.readFile(configPath, 'utf8')
-  const parsed = JSON.parse(raw) as ProjectConfig
-  return parsed
+  const stateConfigPath = path.join(projectRoot, 'state', 'config.json')
+  const legacyGmdConfigPath = path.join(projectRoot, '.gmd', 'config.json')
+
+  try {
+    const raw = await fs.readFile(stateConfigPath, 'utf8')
+    return JSON.parse(raw) as ProjectConfig
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException
+    if (err.code !== 'ENOENT') {
+      throw error
+    }
+  }
+
+  const raw = await fs.readFile(legacyGmdConfigPath, 'utf8')
+  return JSON.parse(raw) as ProjectConfig
 }
 
 export async function loadState(projectRoot: string): Promise<ProjectState> {

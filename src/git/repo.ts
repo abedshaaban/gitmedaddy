@@ -1,16 +1,54 @@
+import fs from 'node:fs/promises'
 import path from 'node:path'
-import { git, GitCommandError } from './exec'
+import { git } from './exec'
+import type { ProjectState } from '../config/types'
 
-export async function initBareRepo(projectRoot: string, repoUrl: string) {
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+export async function resolveGitCommonDir(cwd: string): Promise<string> {
+  const { stdout } = await git(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd })
+  return stdout.trim()
+}
 
-  await git(['clone', '--bare', repoUrl, gitDir], { cwd: projectRoot })
+export async function resolveGitCommonDirFromState(projectRoot: string, state: ProjectState): Promise<string> {
+  for (const w of state.workspaces) {
+    const cwd = path.join(projectRoot, w.folderName)
+    try {
+      await fs.access(path.join(cwd, '.git'))
+    } catch {
+      continue
+    }
+    return resolveGitCommonDir(cwd)
+  }
+  throw new Error('no valid workspace checkout found')
+}
 
-  await git(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], { gitDir })
+export async function listRemoteBranchesFromUrl(repoUrl: string): Promise<string[]> {
+  const { stdout } = await git(['ls-remote', '--heads', repoUrl])
+  const branches: string[] = []
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const parts = trimmed.split('\t')
+    const ref = parts[1]
+    if (ref?.startsWith('refs/heads/')) {
+      branches.push(ref.slice('refs/heads/'.length))
+    }
+  }
+  return Array.from(new Set(branches))
+}
 
-  await git(['fetch', 'origin'], { gitDir })
-
-  return gitDir
+export async function detectDefaultBranchFromRemoteUrl(repoUrl: string): Promise<string | null> {
+  try {
+    const { stdout } = await git(['ls-remote', '--symref', repoUrl, 'HEAD'])
+    for (const line of stdout.split('\n')) {
+      const match = line.match(/ref:\s+refs\/heads\/(\S+)/)
+      if (match?.[1]) {
+        return match[1]
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 export async function detectDefaultBranch(gitDir: string): Promise<string> {
@@ -116,7 +154,7 @@ export async function ensureLocalBranch(
 ): Promise<void> {
   // If explicitly creating a new branch, always base it on the configured base branch
   if (createNewBranch) {
-    // "Pull" the base branch in the bare repo by force-aligning the local
+    // "Pull" the base branch in the shared repo by force-aligning the local
     // base branch ref to the latest remote ref. This happens after a fetch,
     // so refs/remotes/origin/<baseBranch> is up to date.
     await git(['branch', '-f', baseBranch, `refs/remotes/origin/${baseBranch}`], {
@@ -141,7 +179,7 @@ export async function ensureLocalBranch(
     await git(['rev-parse', `refs/remotes/origin/${branch}`], { gitDir })
 
     // "Pull" the branch we are checking out from by force-aligning the local
-    // branch ref to the latest remote ref. This keeps the bare repo in sync
+    // branch ref to the latest remote ref. This keeps local refs in sync
     // with origin for that branch.
     await git(['branch', '-f', branch, `refs/remotes/origin/${branch}`], {
       gitDir
