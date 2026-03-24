@@ -4,7 +4,9 @@ import { Command } from 'commander'
 import { registerCleanCommand } from '../commands/clean'
 import { registerCloneCommand } from '../commands/clone'
 import { registerHideCommand } from '../commands/hide'
+import { registerMergeCommand } from '../commands/merge'
 import { registerNewCommand } from '../commands/new'
+import { registerPullCommand } from '../commands/pull'
 import { registerShowCommand } from '../commands/show'
 
 export function createCli() {
@@ -17,6 +19,8 @@ export function createCli() {
   registerShowCommand(program)
   registerHideCommand(program)
   registerCleanCommand(program)
+  registerPullCommand(program)
+  registerMergeCommand(program)
 
   return program
 }

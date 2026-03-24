@@ -15,6 +15,7 @@ import {
   syncLocalBranchToRemote,
   removeWorktree
 } from '../git/repo'
+import { git } from '../git/exec'
 
 export interface CreateNewWorkspaceInput {
   branchName: string
@@ -67,6 +68,49 @@ export interface CleanWorkspacesResult {
   removedBranches: string[]
 }
 
+export interface PullWorkspacesInput {
+  cwd: string
+  all?: boolean | undefined
+}
+
+export interface PullWorkspacesResult {
+  projectRoot: string
+  pulledBranches: string[]
+  failedBranches: Array<{ branch: string; error: string }>
+}
+
+export interface MergeWorkspaceInput {
+  cwd: string
+  fromBranch?: string | undefined
+  toBranch?: string | undefined
+}
+
+export interface MergeWorkspaceResult {
+  projectRoot: string
+  sourceBranch: string
+  targetBranch: string
+}
+
+function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: ProjectState): string | null {
+  const absoluteCwd = path.resolve(cwd)
+  for (const workspace of state.workspaces) {
+    const workspaceRoot = path.join(projectRoot, workspace.folderName)
+    const relative = path.relative(workspaceRoot, absoluteCwd)
+    if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+      return workspace.branch
+    }
+  }
+  return null
+}
+
+function getWorkspacePath(projectRoot: string, state: ProjectState, branch: string): string {
+  const workspace = state.workspaces.find((w) => w.branch === branch)
+  if (!workspace) {
+    throw new Error(`branch "${branch}" is not currently displayed`)
+  }
+  return path.join(projectRoot, workspace.folderName)
+}
+
 /**
  * Creates a workspace for the requested branch.
  *
@@ -94,6 +138,10 @@ export async function createNewWorkspace(input: CreateNewWorkspaceInput): Promis
   await fetchLatest(gitDir)
   await ensureBaseBranchExists(gitDir, baseBranch)
   const usedExistingRemoteBranch = await remoteBranchExists(gitDir, branchName)
+  if (!usedExistingRemoteBranch) {
+    // Keep the selected base branch in sync with origin before branching.
+    await syncLocalBranchToRemote(gitDir, baseBranch)
+  }
 
   const desiredFolderName = folderName ? branchToFolderSlug(folderName) : branchToFolderSlug(branchName)
   const existingFolderNames = new Set(state.workspaces.map((w) => w.folderName))
@@ -280,5 +328,85 @@ export async function cleanWorkspaces(input: CleanWorkspacesInput): Promise<Clea
     projectRoot,
     keptBranch: targetKeepBranch,
     removedBranches
+  }
+}
+
+export async function pullWorkspaces(input: PullWorkspacesInput): Promise<PullWorkspacesResult> {
+  const { cwd, all = false } = input
+
+  const projectRoot = findProjectRoot(cwd)
+  if (!projectRoot) {
+    throw new Error('not inside a gitmedaddy project')
+  }
+
+  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  await fetchLatest(gitDir)
+
+  const state = await loadState(projectRoot)
+  const branches = all
+    ? state.workspaces.map((w) => w.branch)
+    : (() => {
+        const currentBranch = resolveCurrentWorkspaceBranch(projectRoot, cwd, state)
+        if (!currentBranch) {
+          throw new Error('current directory is not inside a displayed workspace')
+        }
+        return [currentBranch]
+      })()
+
+  const pulledBranches: string[] = []
+  const failedBranches: Array<{ branch: string; error: string }> = []
+
+  for (const branch of branches) {
+    const workspacePath = getWorkspacePath(projectRoot, state, branch)
+    try {
+      await git(['pull', 'origin', branch], { cwd: workspacePath })
+      pulledBranches.push(branch)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error occurred'
+      failedBranches.push({ branch, error: message })
+    }
+  }
+
+  return {
+    projectRoot,
+    pulledBranches,
+    failedBranches
+  }
+}
+
+export async function mergeWorkspace(input: MergeWorkspaceInput): Promise<MergeWorkspaceResult> {
+  const { cwd, fromBranch, toBranch } = input
+
+  const projectRoot = findProjectRoot(cwd)
+  if (!projectRoot) {
+    throw new Error('not inside a gitmedaddy project')
+  }
+
+  const state = await loadState(projectRoot)
+  const currentBranch = resolveCurrentWorkspaceBranch(projectRoot, cwd, state)
+
+  const targetBranch = toBranch ?? currentBranch
+  if (!targetBranch) {
+    throw new Error('current directory is not inside a displayed workspace')
+  }
+
+  const sourceBranch = fromBranch ?? state.defaultBaseBranch
+  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+
+  await fetchLatest(gitDir)
+  await ensureBaseBranchExists(gitDir, sourceBranch)
+  await syncLocalBranchToRemote(gitDir, sourceBranch)
+
+  const targetPath = getWorkspacePath(projectRoot, state, targetBranch)
+  if (!fromBranch) {
+    await git(['pull', 'origin', sourceBranch], { cwd: targetPath })
+  } else {
+    await git(['merge', sourceBranch], { cwd: targetPath })
+  }
+
+  return {
+    projectRoot,
+    sourceBranch,
+    targetBranch
   }
 }
