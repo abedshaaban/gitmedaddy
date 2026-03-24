@@ -1,5 +1,11 @@
 # gitmedaddy (`gmd`)
 
+> Note: The package names I wanted were either taken or too similar to an existing or well-known package, which npm does not allow. That is why I used this name.
+
+## Philosophy
+
+I wanted a better way to manage GitHub branches locally when every PR should have a single goal and AI (or other tools) need to work on different goals in parallel. (This does not replace Git or Git worktrees; it is built entirely on top of them.)
+
 ![Gmd (Git Me Daddy): thin Git wrapper that manages worktrees better—everything you can do with Gmd you can do with Git](assets/banner.png)
 
 `gitmedaddy` (short alias: `gmd`) is a Git worktree-based CLI for running branch workflows in parallel.
