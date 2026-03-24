@@ -2,9 +2,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { detectDefaultBranchFromRemoteUrl, listRemoteBranchesFromUrl, resolveGitCommonDir } from '../git/repo'
 import { git } from '../git/exec'
-import { saveConfig, saveState } from '../config/save'
+import { saveState } from '../config/save'
 import { promptSelect } from '../utils/prompt'
-import type { ProjectConfig, ProjectState } from '../config/types'
+import type { ProjectState } from '../config/types'
 
 export interface CloneProjectInput {
   repoUrl: string
@@ -80,13 +80,6 @@ export async function cloneProject(input: CloneProjectInput): Promise<CloneProje
   const commonDir = await resolveGitCommonDir(workspaceDir)
   await git(['fetch', '--verbose', '--progress', 'origin'], { gitDir: commonDir, inheritStdio: true })
 
-  const config: ProjectConfig = {
-    version: 1,
-    projectName,
-    remote: 'origin',
-    defaultBaseBranch: defaultBranch
-  }
-
   const state: ProjectState = {
     defaultBaseBranch: defaultBranch,
     workspaces: [
@@ -98,7 +91,6 @@ export async function cloneProject(input: CloneProjectInput): Promise<CloneProje
     ]
   }
 
-  await saveConfig(projectRoot, config)
   await saveState(projectRoot, state)
 
   return {

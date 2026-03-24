@@ -9,10 +9,10 @@ import {
   listRemoteBranches,
   resolveGitCommonDir
 } from '../git/repo'
-import { saveConfig, saveState } from '../config/save'
+import { saveState } from '../config/save'
 import { promptSelect } from '../utils/prompt'
 import { branchToFolderSlug } from '../utils/slug'
-import type { ProjectConfig, ProjectState } from '../config/types'
+import type { ProjectState } from '../config/types'
 
 export interface FoundADaddyInput {
   cwd: string
@@ -86,13 +86,6 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     folderName = workspaceFolderName
   }
 
-  const projectName = path.basename(projectRoot)
-  const config: ProjectConfig = {
-    version: 1,
-    projectName,
-    remote: 'origin',
-    defaultBaseBranch
-  }
   const state: ProjectState = {
     defaultBaseBranch,
     workspaces: [
@@ -104,7 +97,6 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     ]
   }
 
-  await saveConfig(projectRoot, config)
   await saveState(projectRoot, state)
 
   return {

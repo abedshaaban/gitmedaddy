@@ -34,15 +34,13 @@ bun add -g gitmedaddy
 ## Core Concepts
 
 - The first workspace is a normal Git clone (or your existing repo root); extra branches are **Git worktrees** that share the same object database.
-- Workspace metadata (default base branch, visible workspaces, goals) lives in **`state/branches.json`** at the project root.
-- Project metadata and workspace state live under **`state/`** (`config.json` and `branches.json`). The CLI discovers a gmd project by walking up until it finds that folder.
+- Workspace metadata (default base branch, visible workspaces, goals) lives in **`state/branches.json`** at the project root. The CLI discovers a gmd project by walking up until it finds that file (or legacy `.gmd/config.json`).
 
 Example layout:
 
 ```text
 my-project/
 ├── state/
-│   ├── config.json
 │   └── branches.json
 ├── main/
 └── feat-create-footer/
@@ -65,7 +63,7 @@ cd your-existing-repo
 gmd foundadaddy
 ```
 
-This sets up `state/config.json`, `state/branches.json`, and your first displayed workspace (or reuses the repo root when it already matches your default base branch).
+This sets up `state/branches.json` and your first displayed workspace (or reuses the repo root when it already matches your default base branch).
 
 ### Create a new branch workspace
 
@@ -82,6 +80,12 @@ Use a custom base branch when needed:
 
 ```bash
 gmd new feat/create-footer --from staging
+```
+
+Change the default base branch used by `gmd new` (and similar commands) without editing state by hand:
+
+```bash
+gmd update
 ```
 
 ## Typical Workflow
@@ -115,7 +119,7 @@ gmd pr --draft
 gmd clone <repo-url>
 ```
 
-Clone a repository into a `gmd`-managed project: a default branch folder (full clone) plus `state/config.json` and `state/branches.json`.
+Clone a repository into a `gmd`-managed project: a default branch folder (full clone) plus `state/branches.json`.
 
 ### `foundadaddy`
 
@@ -124,6 +128,14 @@ gmd foundadaddy
 ```
 
 Initialize `gmd` in an existing Git repository.
+
+### `update`
+
+```bash
+gmd update
+```
+
+Fetch from `origin`, then pick a new **default base branch** for `gmd new` and other flows (saved in `state/branches.json`).
 
 ### `new` (`n`)
 

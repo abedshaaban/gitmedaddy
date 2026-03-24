@@ -12,6 +12,7 @@ import { registerPullCommand } from '../commands/pull'
 import { registerSetGoalCommand } from '../commands/setgoal'
 import { registerShowCommand } from '../commands/show'
 import { registerShowGoalCommand } from '../commands/showgoal'
+import { registerUpdateCommand } from '../commands/update'
 
 export function createCli() {
   const program = new Command()
@@ -29,6 +30,7 @@ export function createCli() {
   registerPullCommand(program)
   registerMergeCommand(program)
   registerPrCommand(program)
+  registerUpdateCommand(program)
 
   return program
 }

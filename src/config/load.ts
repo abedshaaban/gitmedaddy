@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { ProjectConfig, ProjectState } from './types'
+import type { ProjectState } from './types'
 
 function normalizeWorkspaces(parsed: Partial<ProjectState>): ProjectState['workspaces'] {
   const rawEntries = Array.isArray(parsed.workspaces) ? parsed.workspaces : []
@@ -13,24 +13,6 @@ function normalizeWorkspaces(parsed: Partial<ProjectState>): ProjectState['works
       goal: String(record.goal ?? '')
     }
   })
-}
-
-export async function loadConfig(projectRoot: string): Promise<ProjectConfig> {
-  const stateConfigPath = path.join(projectRoot, 'state', 'config.json')
-  const legacyGmdConfigPath = path.join(projectRoot, '.gmd', 'config.json')
-
-  try {
-    const raw = await fs.readFile(stateConfigPath, 'utf8')
-    return JSON.parse(raw) as ProjectConfig
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException
-    if (err.code !== 'ENOENT') {
-      throw error
-    }
-  }
-
-  const raw = await fs.readFile(legacyGmdConfigPath, 'utf8')
-  return JSON.parse(raw) as ProjectConfig
 }
 
 export async function loadState(projectRoot: string): Promise<ProjectState> {
@@ -54,9 +36,8 @@ export async function loadState(projectRoot: string): Promise<ProjectState> {
   const legacyRaw = await fs.readFile(legacyStatePath, 'utf8')
   const legacyParsed = JSON.parse(legacyRaw) as Partial<ProjectState>
 
-  const config = await loadConfig(projectRoot)
   return {
-    defaultBaseBranch: legacyParsed.defaultBaseBranch ?? config.defaultBaseBranch,
+    defaultBaseBranch: legacyParsed.defaultBaseBranch ?? 'main',
     workspaces: normalizeWorkspaces(legacyParsed)
   }
 }

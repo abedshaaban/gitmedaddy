@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { findProjectRoot } from '../utils/findProjectRoot'
+import { promptSelect } from '../utils/prompt'
 import { loadState } from '../config/load'
 import { saveState } from '../config/save'
 import { branchToFolderSlug, resolveSlugCollision } from '../utils/slug'
@@ -9,6 +10,7 @@ import {
   ensureBaseBranchExists,
   ensureLocalBranch,
   fetchLatest,
+  listRemoteBranches,
   localBranchExists,
   remoteBranchExists,
   removeWorktree,
@@ -113,6 +115,16 @@ export interface ShowWorkspaceGoalResult {
   projectRoot: string
   branch: string
   goal: string
+}
+
+export interface UpdateDefaultBaseBranchInput {
+  cwd: string
+}
+
+export interface UpdateDefaultBaseBranchResult {
+  projectRoot: string
+  previousDefaultBaseBranch: string
+  defaultBaseBranch: string
 }
 
 function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: ProjectState): string | null {
@@ -508,5 +520,45 @@ export async function showWorkspaceGoal(input: ShowWorkspaceGoalInput): Promise<
     projectRoot,
     branch: targetBranch,
     goal: entry.goal
+  }
+}
+
+export async function updateDefaultBaseBranch(
+  input: UpdateDefaultBaseBranchInput
+): Promise<UpdateDefaultBaseBranchResult> {
+  const { cwd } = input
+
+  const projectRoot = findProjectRoot(cwd)
+  if (!projectRoot) {
+    throw new Error('not inside a gitmedaddy project')
+  }
+
+  const state = await loadState(projectRoot)
+  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
+  await fetchLatest(gitDir)
+
+  const remoteBranches = await listRemoteBranches(gitDir)
+  if (remoteBranches.length === 0) {
+    throw new Error('no remote branches found')
+  }
+
+  const defaultBaseBranch = await promptSelect(
+    'Select default base branch for new workspaces',
+    remoteBranches,
+    state.defaultBaseBranch
+  )
+
+  await ensureBaseBranchExists(gitDir, defaultBaseBranch)
+
+  const newState: ProjectState = {
+    ...state,
+    defaultBaseBranch
+  }
+  await saveState(projectRoot, newState)
+
+  return {
+    projectRoot,
+    previousDefaultBaseBranch: state.defaultBaseBranch,
+    defaultBaseBranch
   }
 }
