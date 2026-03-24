@@ -11,6 +11,9 @@ import {
   ensureLocalBranch,
   createWorktree,
   remoteBranchExists,
+  localBranchExists,
+  syncLocalBranchToRemote,
+  removeWorktree,
 } from "../git/repo";
 
 export interface CreateNewWorkspaceInput {
@@ -25,6 +28,29 @@ export interface CreateNewWorkspaceResult {
   branch: string;
   baseBranch: string;
   usedExistingRemoteBranch: boolean;
+}
+
+export interface ShowWorkspaceInput {
+  branchName: string;
+  cwd: string;
+}
+
+export interface ShowWorkspaceResult {
+  projectRoot: string;
+  workspacePath: string;
+  branch: string;
+  usedRemoteBranch: boolean;
+}
+
+export interface HideWorkspaceInput {
+  branchName: string;
+  cwd: string;
+}
+
+export interface HideWorkspaceResult {
+  projectRoot: string;
+  workspacePath: string;
+  branch: string;
 }
 
 /**
@@ -104,5 +130,101 @@ export async function createNewWorkspace(
     branch: branchName,
     baseBranch,
     usedExistingRemoteBranch,
+  };
+}
+
+export async function showWorkspace(input: ShowWorkspaceInput): Promise<ShowWorkspaceResult> {
+  const { branchName, cwd } = input;
+
+  const projectRoot = findProjectRoot(cwd);
+  if (!projectRoot) {
+    throw new Error("not inside a gitmedaddy project");
+  }
+
+  const state = await loadState(projectRoot);
+  const existingBranch = state.workspaces.find((w) => w.branch === branchName);
+  if (existingBranch) {
+    throw new Error("branch is already displayed");
+  }
+
+  const gitDir = path.join(projectRoot, ".gmd", "repo.git");
+  await fetchLatest(gitDir);
+
+  const hasRemoteBranch = await remoteBranchExists(gitDir, branchName);
+  const hasLocalBranch = await localBranchExists(gitDir, branchName);
+  if (!hasRemoteBranch && !hasLocalBranch) {
+    throw new Error("branch was not found on origin or local refs");
+  }
+
+  if (hasRemoteBranch) {
+    await syncLocalBranchToRemote(gitDir, branchName);
+  }
+
+  const desiredSlug = branchToFolderSlug(branchName);
+  const existingSlugs = new Set(state.workspaces.map((w) => w.folder));
+  const folderSlug = resolveSlugCollision(desiredSlug, existingSlugs);
+  const workspaceDir = path.join(projectRoot, folderSlug);
+
+  try {
+    await fs.mkdir(workspaceDir, { recursive: false });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error("workspace folder already exists");
+    }
+    throw error;
+  }
+
+  await createWorktree(gitDir, workspaceDir, branchName);
+
+  const newEntry = {
+    branch: branchName,
+    folder: folderSlug,
+    path: folderSlug,
+    baseBranch: state.defaultBaseBranch,
+    createdAt: new Date().toISOString(),
+  };
+
+  const newState: ProjectState = {
+    defaultBaseBranch: state.defaultBaseBranch,
+    workspaces: [...state.workspaces, newEntry],
+  };
+  await saveState(projectRoot, newState);
+
+  return {
+    projectRoot,
+    workspacePath: workspaceDir,
+    branch: branchName,
+    usedRemoteBranch: hasRemoteBranch,
+  };
+}
+
+export async function hideWorkspace(input: HideWorkspaceInput): Promise<HideWorkspaceResult> {
+  const { branchName, cwd } = input;
+
+  const projectRoot = findProjectRoot(cwd);
+  if (!projectRoot) {
+    throw new Error("not inside a gitmedaddy project");
+  }
+
+  const state = await loadState(projectRoot);
+  const entry = state.workspaces.find((w) => w.branch === branchName);
+  if (!entry) {
+    throw new Error("branch is not currently displayed");
+  }
+
+  const gitDir = path.join(projectRoot, ".gmd", "repo.git");
+  const workspaceDir = path.join(projectRoot, entry.path);
+  await removeWorktree(gitDir, workspaceDir);
+
+  const newState: ProjectState = {
+    defaultBaseBranch: state.defaultBaseBranch,
+    workspaces: state.workspaces.filter((w) => w.branch !== branchName),
+  };
+  await saveState(projectRoot, newState);
+
+  return {
+    projectRoot,
+    workspacePath: workspaceDir,
+    branch: branchName,
   };
 }

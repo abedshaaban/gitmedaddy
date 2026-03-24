@@ -78,6 +78,21 @@ export async function remoteBranchExists(gitDir: string, branch: string): Promis
   }
 }
 
+export async function localBranchExists(gitDir: string, branch: string): Promise<boolean> {
+  try {
+    await git(["show-ref", "--verify", `refs/heads/${branch}`], { gitDir });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function syncLocalBranchToRemote(gitDir: string, branch: string): Promise<void> {
+  await git(["branch", "-f", branch, `refs/remotes/origin/${branch}`], {
+    gitDir,
+  });
+}
+
 export async function ensureLocalBranch(
   gitDir: string,
   branch: string,
@@ -140,4 +155,8 @@ export async function createWorktree(
   branch: string,
 ): Promise<void> {
   await git(["worktree", "add", worktreePath, branch], { gitDir });
+}
+
+export async function removeWorktree(gitDir: string, worktreePath: string): Promise<void> {
+  await git(["worktree", "remove", worktreePath], { gitDir });
 }

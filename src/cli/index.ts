@@ -2,7 +2,9 @@
 
 import { Command } from "commander";
 import { registerCloneCommand } from "../commands/clone";
+import { registerHideCommand } from "../commands/hide";
 import { registerNewCommand } from "../commands/new";
+import { registerShowCommand } from "../commands/show";
 
 export function createCli() {
   const program = new Command();
@@ -11,6 +13,8 @@ export function createCli() {
 
   registerCloneCommand(program);
   registerNewCommand(program);
+  registerShowCommand(program);
+  registerHideCommand(program);
 
   return program;
 }
