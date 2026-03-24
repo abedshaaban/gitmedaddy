@@ -1,7 +1,7 @@
 import type { Command } from "commander";
-import { checkoutWorkspace } from "../core/workspace";
+import { createNewWorkspace } from "../core/workspace";
 
-export function registerCheckoutCommand(program: Command) {
+export function registerNewCommand(program: Command) {
   program
     .command("new")
     .alias("n")
@@ -10,7 +10,7 @@ export function registerCheckoutCommand(program: Command) {
     .description("Create a new workspace for a branch")
     .action(async (branchName: string, options: { from?: string | undefined }) => {
       try {
-        const result = await checkoutWorkspace({
+        const result = await createNewWorkspace({
           branchName,
           baseBranchOverride: options.from,
           cwd: process.cwd(),

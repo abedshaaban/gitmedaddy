@@ -2,7 +2,7 @@
 
 import { Command } from "commander";
 import { registerCloneCommand } from "../commands/clone";
-import { registerCheckoutCommand } from "../commands/checkout";
+import { registerNewCommand } from "../commands/new";
 
 export function createCli() {
   const program = new Command();
@@ -10,7 +10,7 @@ export function createCli() {
   program.name("gitmedaddy").description("Thin Git integration layer").version("0.0.1");
 
   registerCloneCommand(program);
-  registerCheckoutCommand(program);
+  registerNewCommand(program);
 
   return program;
 }

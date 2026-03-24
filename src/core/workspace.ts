@@ -13,13 +13,13 @@ import {
   remoteBranchExists,
 } from "../git/repo";
 
-export interface CheckoutWorkspaceInput {
+export interface CreateNewWorkspaceInput {
   branchName: string;
   baseBranchOverride?: string | undefined;
   cwd: string;
 }
 
-export interface CheckoutWorkspaceResult {
+export interface CreateNewWorkspaceResult {
   projectRoot: string;
   workspacePath: string;
   branch: string;
@@ -27,9 +27,9 @@ export interface CheckoutWorkspaceResult {
   usedExistingRemoteBranch: boolean;
 }
 
-export async function checkoutWorkspace(
-  input: CheckoutWorkspaceInput,
-): Promise<CheckoutWorkspaceResult> {
+export async function createNewWorkspace(
+  input: CreateNewWorkspaceInput,
+): Promise<CreateNewWorkspaceResult> {
   const { branchName, baseBranchOverride, cwd } = input;
 
   const projectRoot = findProjectRoot(cwd);
