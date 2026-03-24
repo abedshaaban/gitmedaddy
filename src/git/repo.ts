@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { git } from './exec'
+import { GitCommandError, git } from './exec'
 import type { ProjectState } from '../config/types'
 
 export async function resolveGitCommonDir(cwd: string): Promise<string> {
@@ -140,10 +140,52 @@ export async function localBranchExists(gitDir: string, branch: string): Promise
   }
 }
 
+/** Path of the worktree that has `branch` checked out, or null if none. */
+export async function findWorktreePathForBranch(gitDir: string, branch: string): Promise<string | null> {
+  const { stdout } = await git(['worktree', 'list', '--porcelain'], { gitDir })
+  const lines = stdout.split('\n')
+  let currentPath: string | null = null
+  for (const line of lines) {
+    if (line.startsWith('worktree ')) {
+      currentPath = line.slice('worktree '.length)
+    } else if (line.startsWith('branch ') && currentPath) {
+      const ref = line.slice('branch '.length).trim()
+      const match = ref.match(/^refs\/heads\/(.+)$/)
+      if (match?.[1] === branch) {
+        return currentPath
+      }
+    }
+  }
+  return null
+}
+
+function isBranchForceUpdateBlockedByWorktree(error: unknown): boolean {
+  if (!(error instanceof GitCommandError)) {
+    return false
+  }
+  const text = `${error.stderr}\n${error.message}`
+  return text.includes('used by worktree')
+}
+
+/**
+ * Align the local branch ref to the remote-tracking ref after fetch.
+ * When that branch is checked out in a worktree, `git branch -f` is not allowed; we reset that worktree instead.
+ */
 export async function syncLocalBranchToRemote(gitDir: string, branch: string): Promise<void> {
-  await git(['branch', '-f', branch, `refs/remotes/origin/${branch}`], {
-    gitDir
-  })
+  try {
+    await git(['branch', '-f', branch, `refs/remotes/origin/${branch}`], {
+      gitDir
+    })
+  } catch (error) {
+    if (!isBranchForceUpdateBlockedByWorktree(error)) {
+      throw error
+    }
+    const worktreePath = await findWorktreePathForBranch(gitDir, branch)
+    if (!worktreePath) {
+      throw error
+    }
+    await git(['reset', '--hard', `refs/remotes/origin/${branch}`], { cwd: worktreePath })
+  }
 }
 
 export async function ensureLocalBranch(
@@ -157,9 +199,7 @@ export async function ensureLocalBranch(
     // "Pull" the base branch in the shared repo by force-aligning the local
     // base branch ref to the latest remote ref. This happens after a fetch,
     // so refs/remotes/origin/<baseBranch> is up to date.
-    await git(['branch', '-f', baseBranch, `refs/remotes/origin/${baseBranch}`], {
-      gitDir
-    })
+    await syncLocalBranchToRemote(gitDir, baseBranch)
 
     try {
       await git(['show-ref', '--verify', `refs/heads/${branch}`], { gitDir })
@@ -181,9 +221,7 @@ export async function ensureLocalBranch(
     // "Pull" the branch we are checking out from by force-aligning the local
     // branch ref to the latest remote ref. This keeps local refs in sync
     // with origin for that branch.
-    await git(['branch', '-f', branch, `refs/remotes/origin/${branch}`], {
-      gitDir
-    })
+    await syncLocalBranchToRemote(gitDir, branch)
     return
   } catch {
     // Remote branch doesn't exist - fall back to creating from base branch
