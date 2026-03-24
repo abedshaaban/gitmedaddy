@@ -56,6 +56,17 @@ export interface HideWorkspaceResult {
   branch: string
 }
 
+export interface CleanWorkspacesInput {
+  cwd: string
+  keepBranch?: string | undefined
+}
+
+export interface CleanWorkspacesResult {
+  projectRoot: string
+  keptBranch: string
+  removedBranches: string[]
+}
+
 /**
  * Creates a workspace for the requested branch.
  *
@@ -219,5 +230,55 @@ export async function hideWorkspace(input: HideWorkspaceInput): Promise<HideWork
     projectRoot,
     workspacePath: workspaceDir,
     branch: branchName
+  }
+}
+
+export async function cleanWorkspaces(input: CleanWorkspacesInput): Promise<CleanWorkspacesResult> {
+  const { cwd, keepBranch } = input
+
+  const projectRoot = findProjectRoot(cwd)
+  if (!projectRoot) {
+    throw new Error('not inside a gitmedaddy project')
+  }
+
+  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  await fetchLatest(gitDir)
+
+  const initialState = await loadState(projectRoot)
+  const targetKeepBranch = keepBranch ?? initialState.defaultBaseBranch
+
+  const isDisplayed = initialState.workspaces.some((w) => w.branch === targetKeepBranch)
+  if (!isDisplayed) {
+    await showWorkspace({
+      branchName: targetKeepBranch,
+      cwd
+    })
+  }
+
+  const state = await loadState(projectRoot)
+  const removedBranches: string[] = []
+
+  for (const workspace of state.workspaces) {
+    if (workspace.branch === targetKeepBranch) continue
+    const workspaceDir = path.join(projectRoot, workspace.folderName)
+    await removeWorktree(gitDir, workspaceDir)
+    removedBranches.push(workspace.branch)
+  }
+
+  const keptWorkspace = state.workspaces.find((w) => w.branch === targetKeepBranch)
+  if (!keptWorkspace) {
+    throw new Error('keep branch is missing from workspaces')
+  }
+
+  const newState: ProjectState = {
+    defaultBaseBranch: state.defaultBaseBranch,
+    workspaces: [keptWorkspace]
+  }
+  await saveState(projectRoot, newState)
+
+  return {
+    projectRoot,
+    keptBranch: targetKeepBranch,
+    removedBranches
   }
 }

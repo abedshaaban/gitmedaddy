@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander'
+import { registerCleanCommand } from '../commands/clean'
 import { registerCloneCommand } from '../commands/clone'
 import { registerHideCommand } from '../commands/hide'
 import { registerNewCommand } from '../commands/new'
@@ -15,6 +16,7 @@ export function createCli() {
   registerNewCommand(program)
   registerShowCommand(program)
   registerHideCommand(program)
+  registerCleanCommand(program)
 
   return program
 }
