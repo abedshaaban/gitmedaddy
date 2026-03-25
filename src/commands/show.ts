@@ -2,7 +2,7 @@ import { showWorkspace } from '../core/workspace'
 import { branchToFolderSlug } from '../utils/slug'
 import { promptInput, promptSelect } from '../utils/prompt'
 import { loadState } from '../config/load'
-import { resolveGitCommonDirFromState, fetchLatest, listLocalBranches, listRemoteBranches } from '../git/repo'
+import { fetchLatest, listLocalBranches, listRemoteBranches, resolveGitCommonDirFromState } from '../git/repo'
 import { findProjectRoot } from '../utils/findProjectRoot'
 import type { Command } from 'commander'
 
