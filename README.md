@@ -18,7 +18,7 @@ Git worktrees already let you check out more than one branch at a time; the hard
 
 - Manage many branch workspaces without hand-maintaining worktree paths and bases
 - Reduce mental overhead versus ad hoc `git worktree` workflows
-- Keep one workspace per task/goal with state tracked in the repo
+- Keep one workspace per task/goal with local state tracked in `state/branches.json`
 - Stay fully compatible with normal Git commands
 
 ## Installation
@@ -40,7 +40,7 @@ bun add -g gitmedaddy
 ## Core Concepts
 
 - The first workspace is a normal Git clone (or your existing repo root); extra branches are **Git worktrees** that share the same object database.
-- Workspace metadata (default base branch, visible workspaces, goals) lives in **`state/branches.json`** at the project root. The CLI discovers a gmd project by walking up until it finds that file (or legacy `.gmd/config.json`).
+- Workspace metadata lives in **`state/branches.json`** at the project root. This includes the default base branch, visible workspaces, saved goals, and default CLI behavior (`json` / `interactive`). The CLI discovers a gmd project by walking up until it finds that file.
 
 Example layout:
 
@@ -61,6 +61,7 @@ gmd clone https://github.com/OWNER/PROJECT_NAME.git
 ```
 
 During setup, you will choose a default base branch (for example `main`).
+The initial CLI defaults are also saved in `state/branches.json`.
 
 ### Option B: Initialize inside an existing local Git repo
 
@@ -88,10 +89,17 @@ Use a custom base branch when needed:
 gmd new feat/create-footer --from staging
 ```
 
-Change the default base branch used by `gmd new` (and similar commands) without editing state by hand:
+Change the saved project defaults used by `gmd new` and related commands without editing `state/branches.json` by hand:
 
 ```bash
 gmd update
+```
+
+You can also override behavior for a single command:
+
+```bash
+gmd --json --no-interactive show feat/create-footer
+gmd --no-json pull --all
 ```
 
 ## Typical Workflow
@@ -139,9 +147,14 @@ Initialize `gmd` in an existing Git repository.
 
 ```bash
 gmd update
+gmd update --base staging
 ```
 
-Fetch from `origin`, then pick a new **default base branch** for `gmd new` and other flows (saved in `state/branches.json`).
+Fetch from `origin`, then update saved project defaults in `state/branches.json`:
+
+- default base branch
+- default output mode (`json` or text)
+- default command mode (`interactive` or non-interactive)
 
 ### `new` (`n`)
 
@@ -229,7 +242,9 @@ This command pushes with upstream (`git push -u origin <branch>`) before opening
 - Requires Git installed and available in `PATH`.
 - `gmd pr` requires GitHub CLI (`gh`) installed and authenticated.
 - Run commands from inside a `gmd` project/workspace for non-`clone` operations.
-- Command output is JSON for script-friendly automation.
+- Use `--json` / `--no-json` to override output format for a single command.
+- Use `--interactive` / `--no-interactive` to override prompting for a single command.
+- Saved defaults live in `state/branches.json` and can be updated with `gmd update`.
 
 ## Roadmap
 

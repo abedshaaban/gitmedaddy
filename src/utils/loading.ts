@@ -1,7 +1,7 @@
 const frames = ['-', '\\', '|', '/']
 
 function isProbablyInteractive(): boolean {
-  return process.stdout.isTTY === true && process.env.CI !== 'true'
+  return process.stderr.isTTY === true && process.env.CI !== 'true'
 }
 
 export async function withLoading<T>(message: string, fn: () => Promise<T>): Promise<T> {
@@ -10,7 +10,7 @@ export async function withLoading<T>(message: string, fn: () => Promise<T>): Pro
     return fn()
   }
 
-  process.stdout.write(`${message} `)
+  process.stderr.write(`${message} `)
   let idx = 0
   let done = false
 
@@ -18,7 +18,7 @@ export async function withLoading<T>(message: string, fn: () => Promise<T>): Pro
     if (done) return
     const frame = frames[idx]!
     idx = (idx + 1) % frames.length
-    process.stdout.write(`\r${message} ${frame}`)
+    process.stderr.write(`\r${message} ${frame}`)
   }, 100)
 
   try {
@@ -27,6 +27,6 @@ export async function withLoading<T>(message: string, fn: () => Promise<T>): Pro
   } finally {
     done = true
     clearInterval(interval)
-    process.stdout.write(`\r${message} done\n`)
+    process.stderr.write(`\r${message} done\n`)
   }
 }

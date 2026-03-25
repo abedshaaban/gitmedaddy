@@ -1,20 +1,26 @@
+import { getGlobalCliOptions } from '../cli/options'
 import { updateDefaultBaseBranch } from '../core/workspace'
+import { executeCommand } from './_shared'
 import type { Command } from 'commander'
 
 export function registerUpdateCommand(program: Command) {
   program
     .command('update')
-    .description('Change the default base branch for new workspaces (interactive)')
-    .action(async () => {
-      try {
-        const result = await updateDefaultBaseBranch({ cwd: process.cwd() })
+    .option('--base <branch-name>', 'Set the default base branch without prompting')
+    .description('Update project defaults for base branch, output mode, and interactivity')
+    .action(async (options: { base?: string | undefined }, command: Command) => {
+      await executeCommand(command, async (behavior) => {
+        const overrides = getGlobalCliOptions(command)
 
-        console.log(JSON.stringify(result, null, 2))
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error occurred'
-
-        console.error(message)
-        process.exitCode = 1
-      }
+        return updateDefaultBaseBranch({
+          cwd: process.cwd(),
+          interactive: behavior.interactive,
+          baseBranchOverride: options.base,
+          settingsOverrides: {
+            ...(typeof overrides.json === 'boolean' ? { json: overrides.json } : {}),
+            ...(typeof overrides.interactive === 'boolean' ? { interactive: overrides.interactive } : {})
+          }
+        })
+      })
     })
 }

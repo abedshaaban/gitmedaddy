@@ -18,6 +18,10 @@ export function createCli() {
   const program = new Command()
 
   program.name('gitmedaddy').description('Thin Git integration layer').version('0.0.12')
+  program.option('--json', 'Force JSON output for this command')
+  program.option('--no-json', 'Force text output for this command')
+  program.option('--interactive', 'Force interactive prompts for this command')
+  program.option('--no-interactive', 'Disable interactive prompts for this command')
 
   registerCloneCommand(program)
   registerFoundADaddyCommand(program)

@@ -3,7 +3,7 @@ import path from 'node:path'
 import { findProjectRoot } from '../utils/findProjectRoot'
 import { promptSelect } from '../utils/prompt'
 import { loadState } from '../config/load'
-import { saveState } from '../config/save'
+import { saveState, withStateLock } from '../config/save'
 import { branchToFolderSlug, resolveSlugCollision } from '../utils/slug'
 import {
   createWorktree,
@@ -15,11 +15,10 @@ import {
   localBranchExists,
   remoteBranchExists,
   removeWorktree,
-  resolveGitCommonDirFromState,
-  syncLocalBranchToRemote
+  resolveGitCommonDirFromState
 } from '../git/repo'
 import { git } from '../git/exec'
-import type { ProjectState } from '../config/types'
+import type { ProjectSettings, ProjectState } from '../config/types'
 
 export interface CreateNewWorkspaceInput {
   branchName: string
@@ -120,12 +119,16 @@ export interface ShowWorkspaceGoalResult {
 
 export interface UpdateDefaultBaseBranchInput {
   cwd: string
+  interactive: boolean
+  baseBranchOverride?: string | undefined
+  settingsOverrides?: Partial<ProjectSettings> | undefined
 }
 
 export interface UpdateDefaultBaseBranchResult {
   projectRoot: string
   previousDefaultBaseBranch: string
   defaultBaseBranch: string
+  settings: ProjectSettings
 }
 
 function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: ProjectState): string | null {
@@ -185,62 +188,64 @@ export async function createNewWorkspace(input: CreateNewWorkspaceInput): Promis
     throw new Error('not inside a gitmedaddy project')
   }
 
-  const state = await loadState(projectRoot)
+  return withStateLock(projectRoot, async () => {
+    const state = await loadState(projectRoot)
+    const baseBranch = baseBranchOverride ?? state.defaultBaseBranch
+    const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
 
-  const baseBranch = baseBranchOverride ?? state.defaultBaseBranch
+    await fetchLatest(gitDir)
+    await ensureBaseBranchExists(gitDir, baseBranch)
 
-  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
+    const usedExistingRemoteBranch = await remoteBranchExists(gitDir, branchName)
+    const desiredFolderName = folderName ? branchToFolderSlug(folderName) : branchToFolderSlug(branchName)
+    const existingFolderNames = new Set(state.workspaces.map((w) => w.folderName))
+    const resolvedFolderName = resolveSlugCollision(desiredFolderName, existingFolderNames)
 
-  await fetchLatest(gitDir)
-  await ensureBaseBranchExists(gitDir, baseBranch)
-  const usedExistingRemoteBranch = await remoteBranchExists(gitDir, branchName)
-  if (!usedExistingRemoteBranch) {
-    // Keep the selected base branch in sync with origin before branching.
-    await syncLocalBranchToRemote(gitDir, baseBranch)
-  }
-
-  const desiredFolderName = folderName ? branchToFolderSlug(folderName) : branchToFolderSlug(branchName)
-  const existingFolderNames = new Set(state.workspaces.map((w) => w.folderName))
-  const resolvedFolderName = resolveSlugCollision(desiredFolderName, existingFolderNames)
-
-  const existingBranch = state.workspaces.find((w) => w.branch === branchName)
-  if (existingBranch) {
-    throw new Error('branch already exists in a conflicting way')
-  }
-
-  const workspaceDir = path.join(projectRoot, resolvedFolderName)
-  try {
-    await fs.mkdir(workspaceDir, { recursive: false })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error('workspace folder already exists')
+    if (state.workspaces.some((w) => w.branch === branchName)) {
+      throw new Error(`branch "${branchName}" is already displayed`)
     }
-    throw error
-  }
 
-  await ensureLocalBranch(gitDir, branchName, baseBranch, !usedExistingRemoteBranch)
-  await createWorktree(gitDir, workspaceDir, branchName)
+    const workspaceDir = path.join(projectRoot, resolvedFolderName)
+    try {
+      await fs.mkdir(workspaceDir, { recursive: false })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error('workspace folder already exists')
+      }
+      throw error
+    }
 
-  const newEntry = {
-    branch: branchName,
-    folderName: resolvedFolderName,
-    goal: (goal ?? '').trim()
-  }
+    try {
+      await ensureLocalBranch(gitDir, branchName, baseBranch, !usedExistingRemoteBranch)
+      await createWorktree(gitDir, workspaceDir, branchName)
+    } catch (error) {
+      await fs.rm(workspaceDir, { recursive: true, force: true })
+      throw error
+    }
 
-  const newState: ProjectState = {
-    defaultBaseBranch: state.defaultBaseBranch,
-    workspaces: [...state.workspaces, newEntry]
-  }
+    const newState: ProjectState = {
+      defaultBaseBranch: state.defaultBaseBranch,
+      settings: state.settings,
+      workspaces: [
+        ...state.workspaces,
+        {
+          branch: branchName,
+          folderName: resolvedFolderName,
+          goal: (goal ?? '').trim()
+        }
+      ]
+    }
 
-  await saveState(projectRoot, newState)
+    await saveState(projectRoot, newState)
 
-  return {
-    projectRoot,
-    workspacePath: workspaceDir,
-    branch: branchName,
-    baseBranch,
-    usedExistingRemoteBranch
-  }
+    return {
+      projectRoot,
+      workspacePath: workspaceDir,
+      branch: branchName,
+      baseBranch,
+      usedExistingRemoteBranch
+    }
+  })
 }
 
 export async function showWorkspace(input: ShowWorkspaceInput): Promise<ShowWorkspaceResult> {
@@ -251,59 +256,67 @@ export async function showWorkspace(input: ShowWorkspaceInput): Promise<ShowWork
     throw new Error('not inside a gitmedaddy project')
   }
 
-  const state = await loadState(projectRoot)
-  const existingBranch = state.workspaces.find((w) => w.branch === branchName)
-  if (existingBranch) {
-    throw new Error('branch is already displayed')
-  }
-
-  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
-  await fetchLatest(gitDir)
-
-  const hasRemoteBranch = await remoteBranchExists(gitDir, branchName)
-  const hasLocalBranch = await localBranchExists(gitDir, branchName)
-  if (!hasRemoteBranch && !hasLocalBranch) {
-    throw new Error('branch was not found on origin or local refs')
-  }
-
-  if (hasRemoteBranch) {
-    await syncLocalBranchToRemote(gitDir, branchName)
-  }
-
-  const desiredFolderName = folderName ? branchToFolderSlug(folderName) : branchToFolderSlug(branchName)
-  const existingFolderNames = new Set(state.workspaces.map((w) => w.folderName))
-  const resolvedFolderName = resolveSlugCollision(desiredFolderName, existingFolderNames)
-  const workspaceDir = path.join(projectRoot, resolvedFolderName)
-
-  try {
-    await fs.mkdir(workspaceDir, { recursive: false })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error('workspace folder already exists')
+  return withStateLock(projectRoot, async () => {
+    const state = await loadState(projectRoot)
+    const existingBranch = state.workspaces.find((w) => w.branch === branchName)
+    if (existingBranch) {
+      throw new Error('branch is already displayed')
     }
-    throw error
-  }
 
-  await createWorktree(gitDir, workspaceDir, branchName)
+    const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
+    await fetchLatest(gitDir)
 
-  const newEntry = {
-    branch: branchName,
-    folderName: resolvedFolderName,
-    goal: ''
-  }
+    const hasRemoteBranch = await remoteBranchExists(gitDir, branchName)
+    const hasLocalBranch = await localBranchExists(gitDir, branchName)
+    if (!hasRemoteBranch && !hasLocalBranch) {
+      throw new Error(
+        `branch "${branchName}" was not found on origin or local refs; create it with: gmd new ${branchName}`
+      )
+    }
 
-  const newState: ProjectState = {
-    defaultBaseBranch: state.defaultBaseBranch,
-    workspaces: [...state.workspaces, newEntry]
-  }
-  await saveState(projectRoot, newState)
+    const desiredFolderName = folderName ? branchToFolderSlug(folderName) : branchToFolderSlug(branchName)
+    const existingFolderNames = new Set(state.workspaces.map((w) => w.folderName))
+    const resolvedFolderName = resolveSlugCollision(desiredFolderName, existingFolderNames)
+    const workspaceDir = path.join(projectRoot, resolvedFolderName)
 
-  return {
-    projectRoot,
-    workspacePath: workspaceDir,
-    branch: branchName,
-    usedRemoteBranch: hasRemoteBranch
-  }
+    try {
+      await fs.mkdir(workspaceDir, { recursive: false })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error('workspace folder already exists')
+      }
+      throw error
+    }
+
+    try {
+      await ensureLocalBranch(gitDir, branchName, state.defaultBaseBranch, false)
+      await createWorktree(gitDir, workspaceDir, branchName)
+    } catch (error) {
+      await fs.rm(workspaceDir, { recursive: true, force: true })
+      throw error
+    }
+
+    const newState: ProjectState = {
+      defaultBaseBranch: state.defaultBaseBranch,
+      settings: state.settings,
+      workspaces: [
+        ...state.workspaces,
+        {
+          branch: branchName,
+          folderName: resolvedFolderName,
+          goal: ''
+        }
+      ]
+    }
+    await saveState(projectRoot, newState)
+
+    return {
+      projectRoot,
+      workspacePath: workspaceDir,
+      branch: branchName,
+      usedRemoteBranch: hasRemoteBranch
+    }
+  })
 }
 
 export async function hideWorkspace(input: HideWorkspaceInput): Promise<HideWorkspaceResult> {
@@ -314,35 +327,38 @@ export async function hideWorkspace(input: HideWorkspaceInput): Promise<HideWork
     throw new Error('not inside a gitmedaddy project')
   }
 
-  const state = await loadState(projectRoot)
-  const entry = state.workspaces.find((w) => w.branch === branchName)
-  if (!entry) {
-    throw new Error('branch is not currently displayed')
-  }
-  if (entry.folderName === '.') {
-    throw new Error('cannot hide the repository root workspace')
-  }
+  return withStateLock(projectRoot, async () => {
+    const state = await loadState(projectRoot)
+    const entry = state.workspaces.find((w) => w.branch === branchName)
+    if (!entry) {
+      throw new Error('branch is not currently displayed')
+    }
+    if (entry.folderName === '.') {
+      throw new Error('cannot hide the repository root workspace')
+    }
 
-  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
-  const workspaceDir = path.join(projectRoot, entry.folderName)
-  if (await isPrimaryWorktree(gitDir, workspaceDir)) {
-    throw new Error(
-      'cannot hide the primary Git workspace (the checkout created by clone); remove extra branches only, or delete the project folder if you want to discard the repo'
-    )
-  }
-  await removeWorktree(gitDir, workspaceDir)
+    const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
+    const workspaceDir = path.join(projectRoot, entry.folderName)
+    if (await isPrimaryWorktree(gitDir, workspaceDir)) {
+      throw new Error(
+        'cannot hide the primary Git workspace (the checkout created by clone); remove extra branches only, or delete the project folder if you want to discard the repo'
+      )
+    }
+    await removeWorktree(gitDir, workspaceDir)
 
-  const newState: ProjectState = {
-    defaultBaseBranch: state.defaultBaseBranch,
-    workspaces: state.workspaces.filter((w) => w.branch !== branchName)
-  }
-  await saveState(projectRoot, newState)
+    const newState: ProjectState = {
+      defaultBaseBranch: state.defaultBaseBranch,
+      settings: state.settings,
+      workspaces: state.workspaces.filter((w) => w.branch !== branchName)
+    }
+    await saveState(projectRoot, newState)
 
-  return {
-    projectRoot,
-    workspacePath: workspaceDir,
-    branch: branchName
-  }
+    return {
+      projectRoot,
+      workspacePath: workspaceDir,
+      branch: branchName
+    }
+  })
 }
 
 export async function cleanWorkspaces(input: CleanWorkspacesInput): Promise<CleanWorkspacesResult> {
@@ -366,40 +382,43 @@ export async function cleanWorkspaces(input: CleanWorkspacesInput): Promise<Clea
     })
   }
 
-  const state = await loadState(projectRoot)
-  const removedBranches: Array<string> = []
+  return withStateLock(projectRoot, async () => {
+    const state = await loadState(projectRoot)
+    const removedBranches: Array<string> = []
 
-  for (const workspace of state.workspaces) {
-    if (workspace.branch === targetKeepBranch) continue
-    if (workspace.folderName === '.') {
-      throw new Error('cannot remove the repository root workspace; choose a different branch to keep')
+    for (const workspace of state.workspaces) {
+      if (workspace.branch === targetKeepBranch) continue
+      if (workspace.folderName === '.') {
+        throw new Error('cannot remove the repository root workspace; choose a different branch to keep')
+      }
+      const workspaceDir = path.join(projectRoot, workspace.folderName)
+      if (await isPrimaryWorktree(gitDir, workspaceDir)) {
+        throw new Error(
+          'cannot remove the primary Git workspace; choose a different branch to keep that is checked out in a linked worktree, or delete the project manually'
+        )
+      }
+      await removeWorktree(gitDir, workspaceDir)
+      removedBranches.push(workspace.branch)
     }
-    const workspaceDir = path.join(projectRoot, workspace.folderName)
-    if (await isPrimaryWorktree(gitDir, workspaceDir)) {
-      throw new Error(
-        'cannot remove the primary Git workspace; choose a different branch to keep that is checked out in a linked worktree, or delete the project manually'
-      )
+
+    const keptWorkspace = state.workspaces.find((w) => w.branch === targetKeepBranch)
+    if (!keptWorkspace) {
+      throw new Error('keep branch is missing from workspaces')
     }
-    await removeWorktree(gitDir, workspaceDir)
-    removedBranches.push(workspace.branch)
-  }
 
-  const keptWorkspace = state.workspaces.find((w) => w.branch === targetKeepBranch)
-  if (!keptWorkspace) {
-    throw new Error('keep branch is missing from workspaces')
-  }
+    const newState: ProjectState = {
+      defaultBaseBranch: state.defaultBaseBranch,
+      settings: state.settings,
+      workspaces: [keptWorkspace]
+    }
+    await saveState(projectRoot, newState)
 
-  const newState: ProjectState = {
-    defaultBaseBranch: state.defaultBaseBranch,
-    workspaces: [keptWorkspace]
-  }
-  await saveState(projectRoot, newState)
-
-  return {
-    projectRoot,
-    keptBranch: targetKeepBranch,
-    removedBranches
-  }
+    return {
+      projectRoot,
+      keptBranch: targetKeepBranch,
+      removedBranches
+    }
+  })
 }
 
 export async function pullWorkspaces(input: PullWorkspacesInput): Promise<PullWorkspacesResult> {
@@ -464,14 +483,20 @@ export async function mergeWorkspace(input: MergeWorkspaceInput): Promise<MergeW
   const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
 
   await fetchLatest(gitDir)
-  await ensureBaseBranchExists(gitDir, sourceBranch)
-  await syncLocalBranchToRemote(gitDir, sourceBranch)
 
   const targetPath = getWorkspacePath(projectRoot, state, targetBranch)
   if (!fromBranch) {
-    await git(['pull', 'origin', sourceBranch], { cwd: targetPath })
+    await ensureBaseBranchExists(gitDir, sourceBranch)
+    await git(['merge', '--ff-only', `refs/remotes/origin/${sourceBranch}`], { cwd: targetPath })
   } else {
-    await git(['merge', sourceBranch], { cwd: targetPath })
+    const hasLocalBranch = await localBranchExists(gitDir, sourceBranch)
+    const hasRemoteBranch = await remoteBranchExists(gitDir, sourceBranch)
+
+    if (!hasLocalBranch && !hasRemoteBranch) {
+      throw new Error(`source branch "${sourceBranch}" was not found`)
+    }
+
+    await git(['merge', hasLocalBranch ? sourceBranch : `refs/remotes/origin/${sourceBranch}`], { cwd: targetPath })
   }
 
   return {
@@ -489,27 +514,30 @@ export async function setWorkspaceGoal(input: SetWorkspaceGoalInput): Promise<Se
     throw new Error('not inside a gitmedaddy project')
   }
 
-  const state = await loadState(projectRoot)
-  const targetBranch = resolveVisibleBranch(projectRoot, cwd, state, branchName)
+  return withStateLock(projectRoot, async () => {
+    const state = await loadState(projectRoot)
+    const targetBranch = resolveVisibleBranch(projectRoot, cwd, state, branchName)
 
-  const newState: ProjectState = {
-    defaultBaseBranch: state.defaultBaseBranch,
-    workspaces: state.workspaces.map((w) =>
-      w.branch === targetBranch
-        ? {
-            ...w,
-            goal: goal.trim()
-          }
-        : w
-    )
-  }
-  await saveState(projectRoot, newState)
+    const newState: ProjectState = {
+      defaultBaseBranch: state.defaultBaseBranch,
+      settings: state.settings,
+      workspaces: state.workspaces.map((w) =>
+        w.branch === targetBranch
+          ? {
+              ...w,
+              goal: goal.trim()
+            }
+          : w
+      )
+    }
+    await saveState(projectRoot, newState)
 
-  return {
-    projectRoot,
-    branch: targetBranch,
-    goal: goal.trim()
-  }
+    return {
+      projectRoot,
+      branch: targetBranch,
+      goal: goal.trim()
+    }
+  })
 }
 
 export async function showWorkspaceGoal(input: ShowWorkspaceGoalInput): Promise<ShowWorkspaceGoalResult> {
@@ -537,40 +565,66 @@ export async function showWorkspaceGoal(input: ShowWorkspaceGoalInput): Promise<
 export async function updateDefaultBaseBranch(
   input: UpdateDefaultBaseBranchInput
 ): Promise<UpdateDefaultBaseBranchResult> {
-  const { cwd } = input
+  const { cwd, interactive, baseBranchOverride, settingsOverrides } = input
 
   const projectRoot = findProjectRoot(cwd)
   if (!projectRoot) {
     throw new Error('not inside a gitmedaddy project')
   }
 
-  const state = await loadState(projectRoot)
-  const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
+  return withStateLock(projectRoot, async () => {
+    const state = await loadState(projectRoot)
+    const gitDir = await resolveGitCommonDirFromState(projectRoot, state)
 
-  await fetchLatest(gitDir, { inheritStdio: true })
+    await fetchLatest(gitDir, { inheritStdio: interactive })
 
-  const remoteBranches = await listRemoteBranches(gitDir)
-  if (remoteBranches.length === 0) {
-    throw new Error('no remote branches found')
-  }
+    const remoteBranches = await listRemoteBranches(gitDir)
+    if (remoteBranches.length === 0) {
+      throw new Error('no remote branches found')
+    }
 
-  const defaultBaseBranch = await promptSelect(
-    'Select default base branch for new workspaces',
-    remoteBranches,
-    state.defaultBaseBranch
-  )
+    const defaultBaseBranch = baseBranchOverride
+      ? baseBranchOverride
+      : interactive
+        ? await promptSelect('Select default base branch for new workspaces', remoteBranches, state.defaultBaseBranch)
+        : state.defaultBaseBranch
 
-  await ensureBaseBranchExists(gitDir, defaultBaseBranch)
+    await ensureBaseBranchExists(gitDir, defaultBaseBranch)
 
-  const newState: ProjectState = {
-    ...state,
-    defaultBaseBranch
-  }
-  await saveState(projectRoot, newState)
+    const nextSettings: ProjectSettings = interactive
+      ? {
+          json:
+            settingsOverrides?.json ??
+            (await promptSelect(
+              'Select default output mode',
+              ['json', 'text'],
+              state.settings.json ? 'json' : 'text'
+            )) === 'json',
+          interactive:
+            settingsOverrides?.interactive ??
+            (await promptSelect(
+              'Select default command mode',
+              ['interactive', 'non-interactive'],
+              state.settings.interactive ? 'interactive' : 'non-interactive'
+            )) === 'interactive'
+        }
+      : {
+          json: settingsOverrides?.json ?? state.settings.json,
+          interactive: settingsOverrides?.interactive ?? state.settings.interactive
+        }
 
-  return {
-    projectRoot,
-    previousDefaultBaseBranch: state.defaultBaseBranch,
-    defaultBaseBranch
-  }
+    const newState: ProjectState = {
+      ...state,
+      defaultBaseBranch,
+      settings: nextSettings
+    }
+    await saveState(projectRoot, newState)
+
+    return {
+      projectRoot,
+      previousDefaultBaseBranch: state.defaultBaseBranch,
+      defaultBaseBranch,
+      settings: nextSettings
+    }
+  })
 }

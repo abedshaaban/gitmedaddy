@@ -1,4 +1,5 @@
 import { cloneProject } from '../core/project'
+import { executeCommand } from './_shared'
 import type { Command } from 'commander'
 
 export function registerCloneCommand(program: Command) {
@@ -6,17 +7,17 @@ export function registerCloneCommand(program: Command) {
     .command('clone')
     .argument('<repo-url>', 'Git repository URL to clone')
     .description('Clone a Git repository into a workspace-ready project')
-    .action(async (repoUrl: string) => {
-      try {
-        const result = await cloneProject({ repoUrl, cwd: process.cwd() })
-        // Keep output simple and explicit
-
-        console.log(JSON.stringify(result, null, 2))
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error occurred'
-
-        console.error(message)
-        process.exitCode = 1
-      }
+    .action(async (repoUrl: string, _options: object, command: Command) => {
+      await executeCommand(command, async (behavior) => {
+        return cloneProject({
+          repoUrl,
+          cwd: process.cwd(),
+          interactive: behavior.interactive,
+          settings: {
+            json: behavior.json,
+            interactive: behavior.interactive
+          }
+        })
+      })
     })
 }

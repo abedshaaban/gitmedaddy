@@ -12,7 +12,7 @@ import {
 import { saveState } from '../config/save'
 import { promptSelect } from '../utils/prompt'
 import { branchToFolderSlug } from '../utils/slug'
-import type { ProjectState } from '../config/types'
+import type { ProjectSettings, ProjectState } from '../config/types'
 
 /** Move every top-level entry under `projectRoot` into `projectRoot/subfolderName`, matching `gmd clone` layout. */
 async function relocateProjectIntoBranchFolder(projectRoot: string, subfolderName: string): Promise<string> {
@@ -38,6 +38,8 @@ async function relocateProjectIntoBranchFolder(projectRoot: string, subfolderNam
 
 export interface FoundADaddyInput {
   cwd: string
+  interactive: boolean
+  settings: ProjectSettings
 }
 
 export interface FoundADaddyResult {
@@ -47,7 +49,7 @@ export interface FoundADaddyResult {
 }
 
 export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyResult> {
-  const { cwd } = input
+  const { cwd, interactive, settings } = input
 
   const { stdout } = await git(['rev-parse', '--show-toplevel'], { cwd })
   const projectRoot = stdout.trim()
@@ -67,21 +69,22 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
 
   const commonDir = await resolveGitCommonDir(cwd)
 
-  await fetchLatest(commonDir, { inheritStdio: true })
+  await fetchLatest(commonDir, { inheritStdio: interactive })
 
   const detectedDefaultBranch = await detectDefaultBranch(commonDir)
   const remoteBranches = await listRemoteBranches(commonDir)
+  if (remoteBranches.length === 0) {
+    throw new Error('no remote branches found')
+  }
   const preferredDefault = remoteBranches.includes('main')
     ? 'main'
     : remoteBranches.includes(detectedDefaultBranch)
       ? detectedDefaultBranch
       : remoteBranches[0]!
 
-  const defaultBaseBranch = await promptSelect(
-    'Select your default base branch for new workspaces',
-    remoteBranches,
-    preferredDefault
-  )
+  const defaultBaseBranch = interactive
+    ? await promptSelect('Select your default base branch for new workspaces', remoteBranches, preferredDefault)
+    : preferredDefault
 
   await ensureLocalBranch(commonDir, defaultBaseBranch, defaultBaseBranch, true)
 
@@ -112,6 +115,7 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
 
   const state: ProjectState = {
     defaultBaseBranch,
+    settings,
     workspaces: [
       {
         branch: defaultBaseBranch,

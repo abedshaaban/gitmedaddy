@@ -4,11 +4,13 @@ import { detectDefaultBranchFromRemoteUrl, listRemoteBranchesFromUrl, resolveGit
 import { git } from '../git/exec'
 import { saveState } from '../config/save'
 import { promptSelect } from '../utils/prompt'
-import type { ProjectState } from '../config/types'
+import type { ProjectSettings, ProjectState } from '../config/types'
 
 export interface CloneProjectInput {
   repoUrl: string
   cwd: string
+  interactive: boolean
+  settings: ProjectSettings
 }
 
 export interface CloneProjectResult {
@@ -34,7 +36,7 @@ function inferProjectNameFromUrl(repoUrl: string): string {
 }
 
 export async function cloneProject(input: CloneProjectInput): Promise<CloneProjectResult> {
-  const { repoUrl, cwd } = input
+  const { repoUrl, cwd, interactive, settings } = input
 
   const projectName = inferProjectNameFromUrl(repoUrl)
   const projectRoot = path.join(cwd, projectName)
@@ -65,11 +67,9 @@ export async function cloneProject(input: CloneProjectInput): Promise<CloneProje
       ? detectedRemoteDefault
       : remoteBranches[0]!
 
-  const defaultBranch = await promptSelect(
-    'Select your default base branch for new workspaces',
-    remoteBranches,
-    preferredDefault
-  )
+  const defaultBranch = interactive
+    ? await promptSelect('Select your default base branch for new workspaces', remoteBranches, preferredDefault)
+    : preferredDefault
 
   const workspaceDir = path.join(projectRoot, defaultBranch)
   await git(['clone', '--verbose', '--progress', '-b', defaultBranch, repoUrl, workspaceDir], {
@@ -82,6 +82,7 @@ export async function cloneProject(input: CloneProjectInput): Promise<CloneProje
 
   const state: ProjectState = {
     defaultBaseBranch: defaultBranch,
+    settings,
     workspaces: [
       {
         branch: defaultBranch,

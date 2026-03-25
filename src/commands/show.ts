@@ -1,9 +1,11 @@
+import { printInfo } from '../cli/output'
 import { showWorkspace } from '../core/workspace'
 import { branchToFolderSlug } from '../utils/slug'
 import { promptInput, promptSelect } from '../utils/prompt'
 import { loadState } from '../config/load'
 import { fetchLatest, listLocalBranches, listRemoteBranches, resolveGitCommonDirFromState } from '../git/repo'
 import { findProjectRoot } from '../utils/findProjectRoot'
+import { executeCommand } from './_shared'
 import type { Command } from 'commander'
 
 export function registerShowCommand(program: Command) {
@@ -12,10 +14,14 @@ export function registerShowCommand(program: Command) {
     .alias('s')
     .argument('[branch-name]', 'Name of the existing branch to display (or select one)')
     .description('Display an existing branch as a workspace folder')
-    .action(async (branchNameArg?: string) => {
-      let branchNameToShow: string | undefined = branchNameArg
-      try {
+    .action(async (branchNameArg: string | undefined, _options: object, command: Command) => {
+      await executeCommand(command, async (behavior) => {
+        let branchNameToShow: string | undefined = branchNameArg
         if (!branchNameToShow) {
+          if (!behavior.interactive) {
+            throw new Error('branch name is required when interactive mode is disabled')
+          }
+
           const projectRoot = findProjectRoot(process.cwd())
           if (!projectRoot) {
             throw new Error('not inside a gitmedaddy project')
@@ -56,7 +62,9 @@ export function registerShowCommand(program: Command) {
         }
 
         const defaultFolderName = branchToFolderSlug(branchNameToShow)
-        const folderName = await promptInput('Workspace folder name', defaultFolderName)
+        const folderName = behavior.interactive
+          ? await promptInput('Workspace folder name', defaultFolderName)
+          : defaultFolderName
 
         const result = await showWorkspace({
           branchName: branchNameToShow,
@@ -65,25 +73,12 @@ export function registerShowCommand(program: Command) {
         })
 
         if (result.usedRemoteBranch) {
-          console.log(`Using remote branch "${branchNameToShow}" and displaying it locally.`)
+          printInfo(`Using remote branch "${branchNameToShow}" and displaying it locally.`, behavior)
         } else {
-          console.log(`Using local branch "${branchNameToShow}" and displaying it locally.`)
+          printInfo(`Using local branch "${branchNameToShow}" and displaying it locally.`, behavior)
         }
 
-        console.log(JSON.stringify(result, null, 2))
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error occurred'
-        if (message === 'branch was not found on origin or local refs') {
-          console.warn(
-            `\x1b[33mWarning: branch "${branchNameToShow ?? branchNameArg}" was not found. ` +
-              `You can create it with: gmd new ${branchNameToShow ?? branchNameArg}\x1b[0m`
-          )
-          process.exitCode = 1
-          return
-        }
-
-        console.error(message)
-        process.exitCode = 1
-      }
+        return result
+      })
     })
 }

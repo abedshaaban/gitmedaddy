@@ -24,14 +24,17 @@ export interface CreatePullRequestResult {
 
 function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: ProjectState): string | null {
   const absoluteCwd = path.resolve(cwd)
+  let best: { branch: string; root: string } | null = null
   for (const workspace of state.workspaces) {
-    const workspaceRoot = path.join(projectRoot, workspace.folderName)
+    const workspaceRoot = path.resolve(path.join(projectRoot, workspace.folderName))
     const relative = path.relative(workspaceRoot, absoluteCwd)
     if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
-      return workspace.branch
+      if (!best || workspaceRoot.length > best.root.length) {
+        best = { branch: workspace.branch, root: workspaceRoot }
+      }
     }
   }
-  return null
+  return best?.branch ?? null
 }
 
 function runGh(args: Array<string>, cwd: string): Promise<{ stdout: string; stderr: string }> {
