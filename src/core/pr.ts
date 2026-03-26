@@ -10,6 +10,8 @@ export interface CreatePullRequestInput {
   baseBranchOverride?: string | undefined
   titleOverride?: string | undefined
   draft?: boolean | undefined
+  /** When true, passes `--assignee @me` to `gh pr create`. */
+  assignSelf?: boolean | undefined
 }
 
 export interface CreatePullRequestResult {
@@ -22,17 +24,20 @@ export interface CreatePullRequestResult {
 
 function resolveCurrentWorkspaceBranch(projectRoot: string, cwd: string, state: ProjectState): string | null {
   const absoluteCwd = path.resolve(cwd)
+  let best: { branch: string; root: string } | null = null
   for (const workspace of state.workspaces) {
-    const workspaceRoot = path.join(projectRoot, workspace.folderName)
+    const workspaceRoot = path.resolve(path.join(projectRoot, workspace.folderName))
     const relative = path.relative(workspaceRoot, absoluteCwd)
     if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
-      return workspace.branch
+      if (!best || workspaceRoot.length > best.root.length) {
+        best = { branch: workspace.branch, root: workspaceRoot }
+      }
     }
   }
-  return null
+  return best?.branch ?? null
 }
 
-function runGh(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
+function runGh(args: Array<string>, cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn('gh', args, {
       cwd,
@@ -64,7 +69,7 @@ function runGh(args: string[], cwd: string): Promise<{ stdout: string; stderr: s
 }
 
 export async function createPullRequest(input: CreatePullRequestInput): Promise<CreatePullRequestResult> {
-  const { cwd, baseBranchOverride, titleOverride, draft = false } = input
+  const { cwd, baseBranchOverride, titleOverride, draft = false, assignSelf = false } = input
 
   const projectRoot = findProjectRoot(cwd)
   if (!projectRoot) {
@@ -84,8 +89,9 @@ export async function createPullRequest(input: CreatePullRequestInput): Promise<
 
   const baseBranch = baseBranchOverride ?? state.defaultBaseBranch
   const title = titleOverride ?? workspace.folderName
-  const goal = workspace.goal?.trim() ?? ''
-  const body = goal ? `## Goal\n${goal}\n` : ''
+  const goal = workspace.goal.trim()
+  const goalBody = goal || '-'
+  const body = `## Goal\n\n${goalBody}\n\n`
 
   const workspacePath = path.join(projectRoot, workspace.folderName)
   await git(['push', '-u', 'origin', branch], { cwd: workspacePath })
@@ -93,6 +99,9 @@ export async function createPullRequest(input: CreatePullRequestInput): Promise<
   const args = ['pr', 'create', '--base', baseBranch, '--head', branch, '--title', title, '--body', body]
   if (draft) {
     args.push('--draft')
+  }
+  if (assignSelf) {
+    args.push('--assignee', '@me')
   }
 
   const { stdout } = await runGh(args, workspacePath)

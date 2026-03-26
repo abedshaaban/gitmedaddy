@@ -1,129 +1,254 @@
-# AI native versioning layer that speaks to Git | Git wrapper for AI
+# gitmedaddy (`gmd`)
 
-`gmd` (gitmedaddy) is a thin wrapper around Git for AI and human workflows that run in parallel.
-It does not replace Git. It organizes your local branches as separate folders using Git worktrees.
+> Note: The package names I wanted were either taken or too similar to an existing or well-known package, which npm does not allow. That is why I used this name.
 
-## Why use gmd
+## Philosophy
 
-Traditional local Git flow usually centers around one checked-out branch at a time.
-That makes parallel work harder when multiple agents (or people) need to work on separate tasks.
+I wanted a better way to manage GitHub branches locally when every PR should have a single goal and AI (or other tools) need to work on different goals in parallel. (This does not replace Git or Git worktrees; it is built entirely on top of them.)
 
-With `gmd`, each branch gets its own local workspace folder:
+![Gmd (Git Me Daddy): thin Git wrapper that manages worktrees better—everything you can do with Gmd you can do with Git](assets/banner.png)
 
-- work on multiple branches side-by-side
-- reduce checkout/context switching
-- keep one branch per PR goal
-- stay fully compatible with standard Git commands
+`gitmedaddy` (short alias: `gmd`) is a Git worktree-based CLI for running branch workflows in parallel.
+It keeps Git as the source of truth while organizing each branch as its own local workspace folder.
+
+## Why use it
+
+Git worktrees already let you check out more than one branch at a time; the hard part is keeping branches organized, named, and discoverable as your list grows.
+`gmd` is a thin layer on top of worktrees: one folder per branch, consistent layout, and project metadata so PR-sized goals stay easy to find and switch between.
+
+- Manage many branch workspaces without hand-maintaining worktree paths and bases
+- Reduce mental overhead versus ad hoc `git worktree` workflows
+- Keep one workspace per task/goal with local state tracked in `state/branches.json`
+- Stay fully compatible with normal Git commands
+
+## Installation
+
+### From the registry (global)
+
+**pnpm**
+
+```bash
+pnpm add -g gitmedaddy
+```
+
+**bun**
+
+```bash
+bun add -g gitmedaddy
+```
+
+## Core Concepts
+
+- The first workspace is a normal Git clone (or your existing repo root); extra branches are **Git worktrees** that share the same object database.
+- Workspace metadata lives in **`state/branches.json`** at the project root. This includes the default base branch, visible workspaces, saved goals, and default CLI behavior (`json` / `interactive`). The CLI discovers a gmd project by walking up until it finds that file.
+
+Example layout:
+
+```text
+my-project/
+├── state/
+│   └── branches.json
+├── main/
+└── feat-create-footer/
+```
 
 ## Quick Start
 
-```bash
-# Clone into a gmd workspace layout
-gmd clone https://github.com/OWNER/PROJECT_NAME.git
-
-# Create a new branch workspace from your default base branch
-gmd new feat/create-footer
-```
-
-After clone, the CLI asks:
-
-- What is your main branch to create new branches from? (defaults to `main`)
-
-Your answer is stored in `state/branches.json`, which keeps branch workflow metadata.
-
-To create a new branch workspace, run:
-
-```bash
-gmd new <branch-name>
-```
-
-This creates the branch from the default base branch configured in `state/branches.json`.  
-If you want a different base branch for this run, pass `-f` or `--from`:
-
-```bash
-gmd new <branch-name> --from staging
-```
-
-## What the workspace looks like
-
-After clone:
-
-```text
-PROJECT_NAME/
-├── state/
-└── main/
-    ├── src/
-    └── package.json
-```
-
-```text
-gmd new feat/create-footer
-```
-
-After creating a new branch workspace:
-
-```text
-PROJECT_NAME/
-├── state/
-├── main/
-│   ├── src/
-│   └── package.json
-└── feat/create-footer/
-    ├── src/
-    └── package.json
-```
-
-## Demo Workflow
-
-### 1) Clone a repository
+### Option A: Start from a remote repository
 
 ```bash
 gmd clone https://github.com/OWNER/PROJECT_NAME.git
 ```
 
-This creates a project folder with:
+During setup, you will choose a default base branch (for example `main`).
+The initial CLI defaults are also saved in `state/branches.json`.
 
-- a `state/` directory for workflow metadata
-- a base branch workspace (commonly `main/`)
+### Option B: Initialize inside an existing local Git repo
 
-### 2) Create a new branch workspace
+```bash
+cd your-existing-repo
+gmd foundadaddy
+```
+
+This sets up `state/branches.json` and your first displayed workspace (or reuses the repo root when it already matches your default base branch).
+
+### Create a new branch workspace
 
 ```bash
 gmd new feat/create-footer
 ```
 
-This creates a new workspace folder for `feat/create-footer` so it can be developed in parallel with other branches.  
-You do not need a separate checkout step because each branch already exists as its own folder.
+`gmd new` prompts for:
 
-### 3) Choose a custom base branch (optional)
+- Workspace folder name (defaults to a branch-based slug)
+- Goal (optional; stored in workspace metadata)
+
+Use a custom base branch when needed:
 
 ```bash
 gmd new feat/create-footer --from staging
 ```
 
-Use `--from` when you want to branch from something other than the default base branch.
+Change the saved project defaults used by `gmd new` and related commands without editing `state/branches.json` by hand:
+
+```bash
+gmd update
+```
+
+You can also override behavior for a single command:
+
+```bash
+gmd --json --no-interactive show feat/create-footer
+gmd --no-json pull --all
+```
+
+## Typical Workflow
+
+```bash
+# 1) Create/show branch workspaces
+gmd new feat/login
+gmd show bugfix/session-timeout
+
+# 2) Work inside each workspace folder with normal git commands
+cd feat-login
+git status
+git add .
+git commit -m "Implement login form"
+
+# 3) Pull latest updates
+gmd pull --all
+
+# 4) Merge base updates into your current workspace
+gmd merge
+
+# 5) Create PR from current workspace branch
+gmd pr --draft
+```
 
 ## Command Reference
 
-### clone
+### `clone`
 
 ```bash
 gmd clone <repo-url>
 ```
 
-Clone a Git repository into a workspace-ready folder structure.
+Clone a repository into a `gmd`-managed project: a default branch folder (full clone) plus `state/branches.json`.
 
-### new
+### `foundadaddy`
 
 ```bash
-# create a new workspace branch from the default base branch
-gmd new <branch-name>
+gmd foundadaddy
+```
 
-# create a new workspace branch from a specific base branch
+Initialize `gmd` in an existing Git repository.
+
+### `update`
+
+```bash
+gmd update
+gmd update --base staging
+```
+
+Fetch from `origin`, then update saved project defaults in `state/branches.json`:
+
+- default base branch
+- default output mode (`json` or text)
+- default command mode (`interactive` or non-interactive)
+
+### `new` (`n`)
+
+```bash
+gmd new <branch-name>
 gmd new <branch-name> --from <base-branch>
 ```
 
-Create a new branch workspace. By default, `--from` uses the configured base branch.
+Create and display a new workspace branch (or attach to existing remote branch if it already exists).
+
+### `show` (`s`)
+
+```bash
+gmd show <branch-name>
+```
+
+Display an existing branch (local or remote) as a workspace folder.
+
+### `hide` (`h`)
+
+```bash
+gmd hide <branch-name>
+```
+
+Hide a displayed workspace by removing its local worktree folder.
+
+### `clean` (`c`)
+
+```bash
+gmd clean
+gmd clean --from <branch-name>
+```
+
+Hide all displayed workspaces except one branch to keep visible.
+
+### `pull`
+
+```bash
+gmd pull
+gmd pull --all
+```
+
+Pull latest changes for the current displayed workspace, or all displayed workspaces.
+
+### `merge`
+
+```bash
+gmd merge
+gmd merge --from <source-branch> --to <target-branch>
+```
+
+Merge source branch changes into a target displayed workspace branch.
+
+### `setgoal`
+
+```bash
+gmd setgoal "<goal text>"
+gmd setgoal "<goal text>" <branch-name>
+```
+
+Set/update goal text for a displayed workspace.
+
+### `showgoal`
+
+```bash
+gmd showgoal
+gmd showgoal <branch-name>
+```
+
+Show saved goal text for a displayed workspace.
+
+### `pr`
+
+```bash
+gmd pr
+gmd pr --base <branch-name> --title "<title>"
+gmd pr --draft
+```
+
+Create a GitHub pull request for the current workspace branch.
+This command pushes with upstream (`git push -u origin <branch>`) before opening the PR.
+
+## Notes and Requirements
+
+- Requires Git installed and available in `PATH`.
+- `gmd pr` requires GitHub CLI (`gh`) installed and authenticated.
+- Run commands from inside a `gmd` project/workspace for non-`clone` operations.
+- Use `--json` / `--no-json` to override output format for a single command.
+- Use `--interactive` / `--no-interactive` to override prompting for a single command.
+- Saved defaults live in `state/branches.json` and can be updated with `gmd update`.
+
+## Roadmap
+
+1. Better integration for AI info streaming.
 
 ### foundadaddy
 
@@ -147,5 +272,5 @@ Reverse `gmd` setup for the current project:
 
 ## Under the Hood
 
-`gmd` is built on top of Git worktrees and Git branches.
-Your repositories remain normal Git repositories; `gmd` only improves local workspace orchestration for parallel workflows.
+`gmd` is built on Git branches + Git worktrees.
+Your repositories remain standard Git repositories; `gmd` adds local orchestration for parallel branch workflows.

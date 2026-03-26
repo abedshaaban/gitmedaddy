@@ -16,8 +16,8 @@ export function branchToFolderSlug(branch: string): string {
 export function resolveSlugCollision(desiredSlug: string, existingSlugs: Set<string>): string {
   if (!existingSlugs.has(desiredSlug)) return desiredSlug
 
-  for (let i = 0; i < COLLISION_SUFFIX_CHARS.length; i += 1) {
-    const candidate = `${desiredSlug}-${COLLISION_SUFFIX_CHARS[i]}`
+  for (const suffixChar of COLLISION_SUFFIX_CHARS) {
+    const candidate = `${desiredSlug}-${suffixChar}`
     if (!existingSlugs.has(candidate)) {
       return candidate
     }

@@ -1,20 +1,16 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import {
-  initBareRepo,
-  detectDefaultBranch,
-  ensureLocalBranch,
-  createWorktree,
-  fetchLatest,
-  listRemoteBranches
-} from '../git/repo'
-import { saveConfig, saveState } from '../config/save'
-import type { ProjectConfig, ProjectState } from '../config/types'
+import { detectDefaultBranchFromRemoteUrl, listRemoteBranchesFromUrl, resolveGitCommonDir } from '../git/repo'
+import { git } from '../git/exec'
+import { saveState } from '../config/save'
 import { promptSelect } from '../utils/prompt'
+import type { ProjectSettings, ProjectState } from '../config/types'
 
 export interface CloneProjectInput {
   repoUrl: string
   cwd: string
+  interactive: boolean
+  settings: ProjectSettings
 }
 
 export interface CloneProjectResult {
@@ -40,7 +36,7 @@ function inferProjectNameFromUrl(repoUrl: string): string {
 }
 
 export async function cloneProject(input: CloneProjectInput): Promise<CloneProjectResult> {
-  const { repoUrl, cwd } = input
+  const { repoUrl, cwd, interactive, settings } = input
 
   const projectName = inferProjectNameFromUrl(repoUrl)
   const projectRoot = path.join(cwd, projectName)
@@ -59,39 +55,34 @@ export async function cloneProject(input: CloneProjectInput): Promise<CloneProje
     throw new Error('target folder is not empty')
   }
 
-  const gitDir = await initBareRepo(projectRoot, repoUrl)
+  const remoteBranches = await listRemoteBranchesFromUrl(repoUrl)
+  if (remoteBranches.length === 0) {
+    throw new Error('no remote branches found')
+  }
 
-  const detectedDefaultBranch = await detectDefaultBranch(gitDir)
-  await fetchLatest(gitDir)
-  const remoteBranches = await listRemoteBranches(gitDir)
-
+  const detectedRemoteDefault = await detectDefaultBranchFromRemoteUrl(repoUrl)
   const preferredDefault = remoteBranches.includes('main')
     ? 'main'
-    : remoteBranches.includes(detectedDefaultBranch)
-      ? detectedDefaultBranch
+    : detectedRemoteDefault && remoteBranches.includes(detectedRemoteDefault)
+      ? detectedRemoteDefault
       : remoteBranches[0]!
-  const defaultBranch = await promptSelect(
-    'Select your default base branch for new workspaces',
-    remoteBranches,
-    preferredDefault
-  )
 
-  await ensureLocalBranch(gitDir, defaultBranch, defaultBranch, true)
+  const defaultBranch = interactive
+    ? await promptSelect('Select your default base branch for new workspaces', remoteBranches, preferredDefault)
+    : preferredDefault
 
   const workspaceDir = path.join(projectRoot, defaultBranch)
-  await fs.mkdir(workspaceDir, { recursive: true })
+  await git(['clone', '--verbose', '--progress', '-b', defaultBranch, repoUrl, workspaceDir], {
+    cwd: projectRoot,
+    inheritStdio: true
+  })
 
-  await createWorktree(gitDir, workspaceDir, defaultBranch)
-
-  const config: ProjectConfig = {
-    version: 1,
-    projectName,
-    remote: 'origin',
-    defaultBaseBranch: defaultBranch
-  }
+  const commonDir = await resolveGitCommonDir(workspaceDir)
+  await git(['fetch', '--verbose', '--progress', 'origin'], { gitDir: commonDir, inheritStdio: true })
 
   const state: ProjectState = {
     defaultBaseBranch: defaultBranch,
+    settings,
     workspaces: [
       {
         branch: defaultBranch,
@@ -101,7 +92,6 @@ export async function cloneProject(input: CloneProjectInput): Promise<CloneProje
     ]
   }
 
-  await saveConfig(projectRoot, config)
   await saveState(projectRoot, state)
 
   return {

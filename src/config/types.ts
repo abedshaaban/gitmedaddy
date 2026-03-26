@@ -1,8 +1,6 @@
-export interface ProjectConfig {
-  version: 1
-  projectName: string
-  remote: string
-  defaultBaseBranch: string
+export interface ProjectSettings {
+  json: boolean
+  interactive: boolean
 }
 
 export interface WorkspaceEntry {
@@ -13,5 +11,11 @@ export interface WorkspaceEntry {
 
 export interface ProjectState {
   defaultBaseBranch: string
-  workspaces: WorkspaceEntry[]
+  settings: ProjectSettings
+  workspaces: Array<WorkspaceEntry>
+}
+
+export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
+  json: true,
+  interactive: true
 }

@@ -1,14 +1,17 @@
 import path from 'node:path'
 import fs from 'node:fs'
 
+function isGmdProjectDir(dir: string): boolean {
+  const stateBranches = path.join(dir, 'state', 'branches.json')
+  return fs.existsSync(stateBranches)
+}
+
 export function findProjectRoot(startDir: string): string | null {
   let current = path.resolve(startDir)
 
-  // Walk upwards until we find .gmd/config.json or hit filesystem root
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const configPath = path.join(current, '.gmd', 'config.json')
-    if (fs.existsSync(configPath)) {
+  // Walk upwards until we find state/branches.json.
+  for (;;) {
+    if (isGmdProjectDir(current)) {
       return current
     }
 

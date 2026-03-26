@@ -13,11 +13,16 @@ import { registerPullCommand } from '../commands/pull'
 import { registerSetGoalCommand } from '../commands/setgoal'
 import { registerShowCommand } from '../commands/show'
 import { registerShowGoalCommand } from '../commands/showgoal'
+import { registerUpdateCommand } from '../commands/update'
 
 export function createCli() {
   const program = new Command()
 
-  program.name('gitmedaddy').description('Thin Git integration layer').version('0.0.1')
+  program.name('gitmedaddy').description('Thin Git integration layer').version('0.0.14')
+  program.option('--json', 'Force JSON output for this command')
+  program.option('--no-json', 'Force text output for this command')
+  program.option('--interactive', 'Force interactive prompts for this command')
+  program.option('--no-interactive', 'Disable interactive prompts for this command')
 
   registerCloneCommand(program)
   registerFoundADaddyCommand(program)
@@ -31,6 +36,7 @@ export function createCli() {
   registerPullCommand(program)
   registerMergeCommand(program)
   registerPrCommand(program)
+  registerUpdateCommand(program)
 
   return program
 }

@@ -1,14 +1,45 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { git } from '../git/exec'
-import { createWorktree, detectDefaultBranch, ensureLocalBranch, fetchLatest, listRemoteBranches } from '../git/repo'
-import { saveConfig, saveState } from '../config/save'
-import type { ProjectConfig, ProjectState } from '../config/types'
+import {
+  createWorktree,
+  detectDefaultBranch,
+  ensureLocalBranch,
+  fetchLatest,
+  listRemoteBranches,
+  resolveGitCommonDir
+} from '../git/repo'
+import { saveState } from '../config/save'
 import { promptSelect } from '../utils/prompt'
 import { branchToFolderSlug } from '../utils/slug'
+import type { ProjectSettings, ProjectState } from '../config/types'
+
+/** Move every top-level entry under `projectRoot` into `projectRoot/subfolderName`, matching `gmd clone` layout. */
+async function relocateProjectIntoBranchFolder(projectRoot: string, subfolderName: string): Promise<string> {
+  const workspacePath = path.join(projectRoot, subfolderName)
+
+  try {
+    await fs.mkdir(workspacePath, { recursive: false })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`workspace folder "${subfolderName}" already exists`)
+    }
+    throw error
+  }
+
+  const entries = await fs.readdir(projectRoot)
+  for (const name of entries) {
+    if (name === subfolderName) continue
+    await fs.rename(path.join(projectRoot, name), path.join(workspacePath, name))
+  }
+
+  return workspacePath
+}
 
 export interface FoundADaddyInput {
   cwd: string
+  interactive: boolean
+  settings: ProjectSettings
 }
 
 export interface FoundADaddyResult {
@@ -18,7 +49,7 @@ export interface FoundADaddyResult {
 }
 
 export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyResult> {
-  const { cwd } = input
+  const { cwd, interactive, settings } = input
 
   const { stdout } = await git(['rev-parse', '--show-toplevel'], { cwd })
   const projectRoot = stdout.trim()
@@ -26,9 +57,9 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     throw new Error('not inside a git repository')
   }
 
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+  const branchesPath = path.join(projectRoot, 'state', 'branches.json')
   try {
-    await fs.access(gitDir)
+    await fs.access(branchesPath)
     throw new Error('gmd is already initialized in this repository')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -36,56 +67,64 @@ export async function foundADaddy(input: FoundADaddyInput): Promise<FoundADaddyR
     }
   }
 
-  await git(['clone', '--bare', '.git', gitDir], { cwd: projectRoot })
-  await git(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], { gitDir })
-  await fetchLatest(gitDir)
+  const commonDir = await resolveGitCommonDir(cwd)
 
-  const detectedDefaultBranch = await detectDefaultBranch(gitDir)
-  const remoteBranches = await listRemoteBranches(gitDir)
+  await fetchLatest(commonDir, { inheritStdio: interactive })
+
+  const detectedDefaultBranch = await detectDefaultBranch(commonDir)
+  const remoteBranches = await listRemoteBranches(commonDir)
+  if (remoteBranches.length === 0) {
+    throw new Error('no remote branches found')
+  }
   const preferredDefault = remoteBranches.includes('main')
     ? 'main'
-    : (remoteBranches.includes(detectedDefaultBranch) ? detectedDefaultBranch : remoteBranches[0]!)
+    : remoteBranches.includes(detectedDefaultBranch)
+      ? detectedDefaultBranch
+      : remoteBranches[0]!
 
-  const defaultBaseBranch = await promptSelect(
-    'Select your default base branch for new workspaces',
-    remoteBranches,
-    preferredDefault
-  )
+  const defaultBaseBranch = interactive
+    ? await promptSelect('Select your default base branch for new workspaces', remoteBranches, preferredDefault)
+    : preferredDefault
 
-  await ensureLocalBranch(gitDir, defaultBaseBranch, defaultBaseBranch, true)
+  await ensureLocalBranch(commonDir, defaultBaseBranch, defaultBaseBranch, true)
 
-  const workspaceFolderName = branchToFolderSlug(defaultBaseBranch)
-  const workspacePath = path.join(projectRoot, workspaceFolderName)
-  try {
-    await fs.mkdir(workspacePath, { recursive: false })
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error(`workspace folder "${workspaceFolderName}" already exists`)
+  const { stdout: headOut } = await git(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: projectRoot })
+  const currentBranch = headOut.trim()
+
+  let workspacePath: string
+  let folderName: string
+
+  if (currentBranch !== 'HEAD' && currentBranch === defaultBaseBranch) {
+    // Same layout as `gmd clone`: `<projectRoot>/<defaultBranch>/` holds the repo; `state/` lives at `projectRoot`.
+    workspacePath = await relocateProjectIntoBranchFolder(projectRoot, defaultBaseBranch)
+    folderName = defaultBaseBranch
+  } else {
+    const workspaceFolderName = branchToFolderSlug(defaultBaseBranch)
+    workspacePath = path.join(projectRoot, workspaceFolderName)
+    try {
+      await fs.mkdir(workspacePath, { recursive: false })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`workspace folder "${workspaceFolderName}" already exists`)
+      }
+      throw error
     }
-    throw error
+    await createWorktree(commonDir, workspacePath, defaultBaseBranch)
+    folderName = workspaceFolderName
   }
 
-  await createWorktree(gitDir, workspacePath, defaultBaseBranch)
-
-  const projectName = path.basename(projectRoot)
-  const config: ProjectConfig = {
-    version: 1,
-    projectName,
-    remote: 'origin',
-    defaultBaseBranch
-  }
   const state: ProjectState = {
     defaultBaseBranch,
+    settings,
     workspaces: [
       {
         branch: defaultBaseBranch,
-        folderName: workspaceFolderName,
+        folderName,
         goal: ''
       }
     ]
   }
 
-  await saveConfig(projectRoot, config)
   await saveState(projectRoot, state)
 
   return {

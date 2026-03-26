@@ -1,7 +1,7 @@
 {
   "name": "gitmedaddy",
-  "version": "0.0.1",
-  "type": "module",
+  "version": "0.0.14",
+  "packageManager": "pnpm@10.18.2",
   "description": "Thin Git integration layer for managing multi-branch worktrees",
   "main": "dist/cli/index.js",
   "files": [
@@ -13,9 +13,12 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "pnpm run build",
     "start": "node dist/cli/index.js",
     "dev": "ts-node src/cli/index.ts",
-    "cipublish": "node publish.ts",
+    "cipublish": "node publish.mjs",
+    "lint": "eslint .",
+    "check": "pnpm run build && pnpm run format:check && pnpm run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -36,12 +39,14 @@
   },
   "homepage": "https://github.com/abedshaaban/gitmedaddy#readme",
   "dependencies": {
+    "@inquirer/prompts": "^8.3.2",
     "commander": "^14.0.3"
   },
   "devDependencies": {
     "@tanstack/eslint-config": "^0.4.0",
     "@tanstack/publish-config": "^0.2.2",
     "@types/node": "^25.3.5",
+    "eslint": "^10.1.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "ts-node": "^10.9.2",

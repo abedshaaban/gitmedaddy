@@ -1,16 +1,58 @@
+import fs from 'node:fs/promises'
 import path from 'node:path'
-import { git, GitCommandError } from './exec'
+import { withLoading } from '../utils/loading'
+import { git } from './exec'
+import type { ProjectState } from '../config/types'
 
-export async function initBareRepo(projectRoot: string, repoUrl: string) {
-  const gitDir = path.join(projectRoot, '.gmd', 'repo.git')
+export async function resolveGitCommonDir(cwd: string): Promise<string> {
+  const { stdout } = await git(['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd })
+  return stdout.trim()
+}
 
-  await git(['clone', '--bare', repoUrl, gitDir], { cwd: projectRoot })
+export async function resolveGitCommonDirFromState(projectRoot: string, state: ProjectState): Promise<string> {
+  for (const w of state.workspaces) {
+    const cwd = path.join(projectRoot, w.folderName)
+    try {
+      await fs.access(path.join(cwd, '.git'))
+    } catch {
+      continue
+    }
+    return resolveGitCommonDir(cwd)
+  }
+  throw new Error('no valid workspace checkout found')
+}
 
-  await git(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*'], { gitDir })
+export async function listRemoteBranchesFromUrl(repoUrl: string): Promise<Array<string>> {
+  const { stdout } = await git(['ls-remote', '--heads', repoUrl])
+  const branches: Array<string> = []
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const parts = trimmed.split('\t')
+    const ref = parts[1]
+    if (ref?.startsWith('refs/heads/')) {
+      const name = ref.slice('refs/heads/'.length)
+      if (name !== 'origin') {
+        branches.push(name)
+      }
+    }
+  }
+  return Array.from(new Set(branches))
+}
 
-  await git(['fetch', 'origin'], { gitDir })
-
-  return gitDir
+export async function detectDefaultBranchFromRemoteUrl(repoUrl: string): Promise<string | null> {
+  try {
+    const { stdout } = await git(['ls-remote', '--symref', repoUrl, 'HEAD'])
+    for (const line of stdout.split('\n')) {
+      const match = line.match(/ref:\s+refs\/heads\/(\S+)/)
+      if (match?.[1]) {
+        return match[1]
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 export async function detectDefaultBranch(gitDir: string): Promise<string> {
@@ -57,7 +99,7 @@ export async function detectDefaultBranch(gitDir: string): Promise<string> {
   throw new Error('remote default branch could not be resolved')
 }
 
-export async function listRemoteBranches(gitDir: string): Promise<string[]> {
+export async function listRemoteBranches(gitDir: string): Promise<Array<string>> {
   const { stdout } = await git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'], {
     gitDir
   })
@@ -68,12 +110,47 @@ export async function listRemoteBranches(gitDir: string): Promise<string[]> {
     .filter(Boolean)
     .filter((line) => line !== 'origin/HEAD')
     .map((line) => line.replace(/^origin\//, ''))
+    .filter((name) => name !== 'origin')
 
   return Array.from(new Set(branches))
 }
 
-export async function fetchLatest(gitDir: string): Promise<void> {
-  await git(['fetch', 'origin'], { gitDir })
+export async function listLocalBranches(gitDir: string): Promise<Array<string>> {
+  const { stdout } = await git(['for-each-ref', '--format=%(refname:short)', 'refs/heads'], { gitDir })
+
+  const branches = stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((name) => name !== 'origin' && !name.startsWith('origin/'))
+
+  return Array.from(new Set(branches))
+}
+
+const lastFetchAtByGitDir = new Map<string, number>()
+
+export async function fetchLatest(
+  gitDir: string,
+  options?: { inheritStdio?: boolean; loadingMessage?: string }
+): Promise<void> {
+  const inheritStdio = options?.inheritStdio === true
+  const loadingMessage = options?.loadingMessage ?? 'Fetching latest branches from origin...'
+
+  // Avoid duplicate fetches within the same CLI command flow.
+  const lastAt = lastFetchAtByGitDir.get(gitDir)
+  const skipIfFreshWithinMs = inheritStdio ? 0 : 10_000
+  if (!inheritStdio && lastAt && Date.now() - lastAt < skipIfFreshWithinMs) {
+    return
+  }
+
+  const runFetch = () =>
+    git(['fetch', 'origin'], {
+      gitDir,
+      ...(inheritStdio ? { inheritStdio: true } : {})
+    })
+
+  await withLoading(loadingMessage, runFetch)
+  lastFetchAtByGitDir.set(gitDir, Date.now())
 }
 
 export async function ensureBaseBranchExists(gitDir: string, baseBranch: string): Promise<void> {
@@ -102,10 +179,40 @@ export async function localBranchExists(gitDir: string, branch: string): Promise
   }
 }
 
-export async function syncLocalBranchToRemote(gitDir: string, branch: string): Promise<void> {
-  await git(['branch', '-f', branch, `refs/remotes/origin/${branch}`], {
-    gitDir
-  })
+/** Path of the worktree that has `branch` checked out, or null if none. */
+export async function findWorktreePathForBranch(gitDir: string, branch: string): Promise<string | null> {
+  const { stdout } = await git(['worktree', 'list', '--porcelain'], { gitDir })
+  const lines = stdout.split('\n')
+  let currentPath: string | null = null
+  for (const line of lines) {
+    if (line.startsWith('worktree ')) {
+      currentPath = line.slice('worktree '.length)
+    } else if (line.startsWith('branch ') && currentPath) {
+      const ref = line.slice('branch '.length).trim()
+      const match = ref.match(/^refs\/heads\/(.+)$/)
+      if (match?.[1] === branch) {
+        return currentPath
+      }
+    }
+  }
+  return null
+}
+
+async function isBranchCheckedOutInWorktree(gitDir: string, branch: string): Promise<boolean> {
+  return (await findWorktreePathForBranch(gitDir, branch)) !== null
+}
+
+async function createBranchFromRemote(gitDir: string, branch: string, remoteBranch: string): Promise<void> {
+  await git(['branch', '--track', branch, `refs/remotes/origin/${remoteBranch}`], { gitDir })
+}
+
+async function createBranchFromBase(gitDir: string, branch: string, baseBranch: string): Promise<void> {
+  if (branch === baseBranch) {
+    await git(['branch', branch, `refs/remotes/origin/${baseBranch}`], { gitDir })
+    return
+  }
+
+  await git(['branch', '--no-track', branch, `refs/remotes/origin/${baseBranch}`], { gitDir })
 }
 
 export async function ensureLocalBranch(
@@ -116,13 +223,6 @@ export async function ensureLocalBranch(
 ): Promise<void> {
   // If explicitly creating a new branch, always base it on the configured base branch
   if (createNewBranch) {
-    // "Pull" the base branch in the bare repo by force-aligning the local
-    // base branch ref to the latest remote ref. This happens after a fetch,
-    // so refs/remotes/origin/<baseBranch> is up to date.
-    await git(['branch', '-f', baseBranch, `refs/remotes/origin/${baseBranch}`], {
-      gitDir
-    })
-
     try {
       await git(['show-ref', '--verify', `refs/heads/${branch}`], { gitDir })
       return
@@ -130,9 +230,7 @@ export async function ensureLocalBranch(
       // fall through and create branch
     }
 
-    await git(['branch', branch, `refs/remotes/origin/${baseBranch}`], {
-      gitDir
-    })
+    await createBranchFromBase(gitDir, branch, baseBranch)
     return
   }
 
@@ -140,12 +238,14 @@ export async function ensureLocalBranch(
   try {
     await git(['rev-parse', `refs/remotes/origin/${branch}`], { gitDir })
 
-    // "Pull" the branch we are checking out from by force-aligning the local
-    // branch ref to the latest remote ref. This keeps the bare repo in sync
-    // with origin for that branch.
-    await git(['branch', '-f', branch, `refs/remotes/origin/${branch}`], {
-      gitDir
-    })
+    if (!(await localBranchExists(gitDir, branch))) {
+      await createBranchFromRemote(gitDir, branch, branch)
+      return
+    }
+
+    if (!(await isBranchCheckedOutInWorktree(gitDir, branch))) {
+      await git(['branch', '-f', branch, `refs/remotes/origin/${branch}`], { gitDir })
+    }
     return
   } catch {
     // Remote branch doesn't exist - fall back to creating from base branch
@@ -159,13 +259,30 @@ export async function ensureLocalBranch(
     // fall through and create branch
   }
 
-  await git(['branch', branch, `refs/remotes/origin/${baseBranch}`], {
-    gitDir
-  })
+  await createBranchFromBase(gitDir, branch, baseBranch)
 }
 
 export async function createWorktree(gitDir: string, worktreePath: string, branch: string): Promise<void> {
   await git(['worktree', 'add', worktreePath, branch], { gitDir })
+}
+
+/** Git lists the primary (non-removable) worktree first in porcelain output. */
+export async function getMainWorktreePath(gitDir: string): Promise<string | null> {
+  const { stdout } = await git(['worktree', 'list', '--porcelain'], { gitDir })
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      return line.slice('worktree '.length)
+    }
+  }
+  return null
+}
+
+export async function isPrimaryWorktree(gitDir: string, worktreePath: string): Promise<boolean> {
+  const main = await getMainWorktreePath(gitDir)
+  if (!main) {
+    return false
+  }
+  return path.resolve(worktreePath) === path.resolve(main)
 }
 
 export async function removeWorktree(gitDir: string, worktreePath: string): Promise<void> {
