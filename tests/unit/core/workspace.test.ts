@@ -137,6 +137,57 @@ describe('createNewWorkspace', () => {
     expect(result.baseBranch).toBe('develop')
   })
 
+  it('slugifies a custom folder name and trims a blank goal to an empty string', async () => {
+    const projectRoot = await createTempDir('workspace-project-custom-folder')
+    tempDirs.push(projectRoot)
+
+    vi.mocked(findProjectRoot).mockReturnValue(projectRoot)
+    vi.mocked(loadState).mockResolvedValue({
+      defaultBaseBranch: 'main',
+      settings: { json: true, interactive: false },
+      workspaces: [{ branch: 'main', folderName: 'my-folder', goal: '' }]
+    })
+    vi.mocked(resolveGitCommonDirFromState).mockResolvedValue('/tmp/project/.git')
+    vi.mocked(remoteBranchExists).mockResolvedValue(false)
+
+    const result = await createNewWorkspace({
+      branchName: 'feature/demo',
+      folderName: 'My Folder!!!',
+      goal: '   ',
+      cwd: projectRoot
+    })
+
+    expect(createWorktree).toHaveBeenCalledWith('/tmp/project/.git', path.join(projectRoot, 'My-Folder'), 'feature/demo')
+    expect(result.workspacePath).toBe(path.join(projectRoot, 'My-Folder'))
+    expect(saveState).toHaveBeenLastCalledWith(projectRoot, {
+      defaultBaseBranch: 'main',
+      settings: { json: true, interactive: false },
+      workspaces: [
+        { branch: 'main', folderName: 'my-folder', goal: '' },
+        { branch: 'feature/demo', folderName: 'My-Folder', goal: '' }
+      ]
+    })
+  })
+
+  it('bubbles base branch validation failures before creating the folder', async () => {
+    const projectRoot = await createTempDir('workspace-project-base-branch-fail')
+    tempDirs.push(projectRoot)
+
+    vi.mocked(findProjectRoot).mockReturnValue(projectRoot)
+    vi.mocked(loadState).mockResolvedValue({
+      defaultBaseBranch: 'main',
+      settings: { json: true, interactive: false },
+      workspaces: [{ branch: 'main', folderName: 'main', goal: '' }]
+    })
+    vi.mocked(resolveGitCommonDirFromState).mockResolvedValue('/tmp/project/.git')
+    vi.mocked(ensureBaseBranchExists).mockRejectedValue(new Error('base branch not found'))
+
+    await expect(createNewWorkspace({ branchName: 'feature/demo', cwd: projectRoot })).rejects.toThrow(
+      'base branch not found'
+    )
+    await expect(fs.access(path.join(projectRoot, 'feature-demo'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('rejects when the branch is already displayed', async () => {
     const projectRoot = await createTempDir('workspace-project-duplicate')
     tempDirs.push(projectRoot)
@@ -196,6 +247,30 @@ describe('createNewWorkspace', () => {
       'worktree add failed'
     )
     await expect(fs.access(workspaceDir)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(saveState).not.toHaveBeenCalled()
+  })
+
+  it('removes the workspace directory if local branch preparation fails', async () => {
+    const projectRoot = await createTempDir('workspace-project-branch-fail')
+    tempDirs.push(projectRoot)
+
+    vi.mocked(findProjectRoot).mockReturnValue(projectRoot)
+    vi.mocked(loadState).mockResolvedValue({
+      defaultBaseBranch: 'main',
+      settings: { json: true, interactive: false },
+      workspaces: [{ branch: 'main', folderName: 'main', goal: '' }]
+    })
+    vi.mocked(resolveGitCommonDirFromState).mockResolvedValue('/tmp/project/.git')
+    vi.mocked(remoteBranchExists).mockResolvedValue(false)
+    vi.mocked(ensureLocalBranch).mockRejectedValue(new Error('branch creation failed'))
+
+    const workspaceDir = path.join(projectRoot, 'feature-demo')
+
+    await expect(createNewWorkspace({ branchName: 'feature/demo', cwd: projectRoot })).rejects.toThrow(
+      'branch creation failed'
+    )
+    await expect(fs.access(workspaceDir)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(createWorktree).not.toHaveBeenCalled()
     expect(saveState).not.toHaveBeenCalled()
   })
 })

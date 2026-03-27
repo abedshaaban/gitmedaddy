@@ -58,4 +58,43 @@ describe('loadState', () => {
       ]
     })
   })
+
+  it('throws when the state file is missing', async () => {
+    const projectRoot = await createTempDir('load-state-missing')
+    tempDirs.push(projectRoot)
+
+    await expect(loadState(projectRoot)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('throws when the state file contains malformed json', async () => {
+    const projectRoot = await createTempDir('load-state-malformed')
+    tempDirs.push(projectRoot)
+
+    await fs.mkdir(path.join(projectRoot, 'state'))
+    await fs.writeFile(path.join(projectRoot, 'state', 'branches.json'), '{not-json', 'utf8')
+
+    await expect(loadState(projectRoot)).rejects.toBeInstanceOf(SyntaxError)
+  })
+
+  it('normalizes null settings and null workspaces', async () => {
+    const projectRoot = await createTempDir('load-state-nullish')
+    tempDirs.push(projectRoot)
+
+    await fs.mkdir(path.join(projectRoot, 'state'))
+    await fs.writeFile(
+      path.join(projectRoot, 'state', 'branches.json'),
+      JSON.stringify({
+        defaultBaseBranch: 123,
+        settings: null,
+        workspaces: null
+      }),
+      'utf8'
+    )
+
+    await expect(loadState(projectRoot)).resolves.toEqual({
+      defaultBaseBranch: 123,
+      settings: { json: true, interactive: true },
+      workspaces: []
+    })
+  })
 })

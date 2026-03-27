@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  detectDefaultBranch,
   detectDefaultBranchFromRemoteUrl,
   findWorktreePathForBranch,
   listRemoteBranchesFromUrl,
@@ -45,6 +46,36 @@ describe('git repo helpers', () => {
     await expect(detectDefaultBranchFromRemoteUrl('https://example.com/repo.git')).resolves.toBeNull()
   })
 
+  it('falls back to git remote show origin when origin HEAD is unavailable', async () => {
+    vi.mocked(git)
+      .mockRejectedValueOnce(new Error('missing origin head'))
+      .mockResolvedValueOnce({
+        stdout: ['* remote origin', '  HEAD branch: release'].join('\n'),
+        stderr: ''
+      })
+
+    await expect(detectDefaultBranch('/tmp/project/.git')).resolves.toBe('release')
+  })
+
+  it('falls back to main when remote show origin is unavailable', async () => {
+    vi.mocked(git)
+      .mockRejectedValueOnce(new Error('missing origin head'))
+      .mockRejectedValueOnce(new Error('remote show failed'))
+      .mockResolvedValueOnce({ stdout: '', stderr: '' })
+
+    await expect(detectDefaultBranch('/tmp/project/.git')).resolves.toBe('main')
+  })
+
+  it('falls back to master when main is unavailable', async () => {
+    vi.mocked(git)
+      .mockRejectedValueOnce(new Error('missing origin head'))
+      .mockRejectedValueOnce(new Error('remote show failed'))
+      .mockRejectedValueOnce(new Error('missing main'))
+      .mockResolvedValueOnce({ stdout: '', stderr: '' })
+
+    await expect(detectDefaultBranch('/tmp/project/.git')).resolves.toBe('master')
+  })
+
   it('finds the worktree path for a checked out branch', async () => {
     vi.mocked(git).mockResolvedValue({
       stdout: [
@@ -62,6 +93,15 @@ describe('git repo helpers', () => {
     await expect(findWorktreePathForBranch('/tmp/project/.git', 'feature/demo')).resolves.toBe(
       '/tmp/project/feature-demo'
     )
+  })
+
+  it('returns null when the branch is not checked out in any worktree', async () => {
+    vi.mocked(git).mockResolvedValue({
+      stdout: ['worktree /tmp/project/main', 'HEAD abc123', 'branch refs/heads/main'].join('\n'),
+      stderr: ''
+    })
+
+    await expect(findWorktreePathForBranch('/tmp/project/.git', 'feature/demo')).resolves.toBeNull()
   })
 
   it('reports false when a remote branch lookup fails', async () => {
