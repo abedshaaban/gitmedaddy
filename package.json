@@ -16,6 +16,8 @@
     "prepublishOnly": "pnpm run build",
     "start": "node dist/cli/index.js",
     "dev": "ts-node src/cli/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "cipublish": "node publish.mjs",
     "lint": "eslint .",
     "check": "pnpm run build && pnpm run format:check && pnpm run lint",
