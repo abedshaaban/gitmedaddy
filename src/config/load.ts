@@ -25,13 +25,19 @@ function normalizeSettings(parsed: Partial<ProjectState>): ProjectState['setting
   }
 }
 
+function normalizeDefaultBaseBranch(parsed: Partial<ProjectState>): ProjectState['defaultBaseBranch'] {
+  return typeof parsed.defaultBaseBranch === 'string' && parsed.defaultBaseBranch.trim() !== ''
+    ? parsed.defaultBaseBranch
+    : 'main'
+}
+
 export async function loadState(projectRoot: string): Promise<ProjectState> {
   const branchesStatePath = path.join(projectRoot, 'state', 'branches.json')
   const raw = await fs.readFile(branchesStatePath, 'utf8')
   const parsed = JSON.parse(raw) as Partial<ProjectState>
 
   return {
-    defaultBaseBranch: parsed.defaultBaseBranch ?? 'main',
+    defaultBaseBranch: normalizeDefaultBaseBranch(parsed),
     settings: normalizeSettings(parsed),
     workspaces: normalizeWorkspaces(parsed)
   }

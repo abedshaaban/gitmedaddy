@@ -92,8 +92,30 @@ describe('loadState', () => {
     )
 
     await expect(loadState(projectRoot)).resolves.toEqual({
-      defaultBaseBranch: 123,
+      defaultBaseBranch: 'main',
       settings: { json: true, interactive: true },
+      workspaces: []
+    })
+  })
+
+  it('falls back to main when the default base branch is blank', async () => {
+    const projectRoot = await createTempDir('load-state-blank-branch')
+    tempDirs.push(projectRoot)
+
+    await fs.mkdir(path.join(projectRoot, 'state'))
+    await fs.writeFile(
+      path.join(projectRoot, 'state', 'branches.json'),
+      JSON.stringify({
+        defaultBaseBranch: '   ',
+        settings: { json: false, interactive: false },
+        workspaces: []
+      }),
+      'utf8'
+    )
+
+    await expect(loadState(projectRoot)).resolves.toEqual({
+      defaultBaseBranch: 'main',
+      settings: { json: false, interactive: false },
       workspaces: []
     })
   })
