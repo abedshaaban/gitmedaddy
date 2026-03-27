@@ -8,8 +8,17 @@ export interface CliBehavior {
   interactive: boolean
 }
 
-function supportsInteractiveCli(): boolean {
+export function supportsInteractiveCli(): boolean {
   return process.stdin.isTTY === true && process.stdout.isTTY === true
+}
+
+export function resolveFallbackCliBehavior(overrides: GlobalCliOptions = {}): CliBehavior {
+  const desiredInteractive = overrides.interactive ?? DEFAULT_PROJECT_SETTINGS.interactive
+
+  return {
+    json: overrides.json ?? DEFAULT_PROJECT_SETTINGS.json,
+    interactive: desiredInteractive && supportsInteractiveCli()
+  }
 }
 
 export async function resolveCliBehavior(cwd: string, overrides: GlobalCliOptions = {}): Promise<CliBehavior> {

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { InvalidProjectStateError } from '../../../src/config/errors'
 import { loadState } from '../../../src/config/load'
 import { createTempDir } from '../../helpers/tempDir'
 
@@ -41,6 +42,7 @@ describe('loadState', () => {
     await fs.writeFile(
       path.join(projectRoot, 'state', 'branches.json'),
       JSON.stringify({
+        defaultBaseBranch: 'main',
         workspaces: [
           { branch: 'main', folder: 'main-folder' },
           { branch: 'feature/demo', path: 'feature-demo', goal: 42 }
@@ -73,10 +75,10 @@ describe('loadState', () => {
     await fs.mkdir(path.join(projectRoot, 'state'))
     await fs.writeFile(path.join(projectRoot, 'state', 'branches.json'), '{not-json', 'utf8')
 
-    await expect(loadState(projectRoot)).rejects.toBeInstanceOf(SyntaxError)
+    await expect(loadState(projectRoot)).rejects.toBeInstanceOf(InvalidProjectStateError)
   })
 
-  it('normalizes null settings and null workspaces', async () => {
+  it('throws when defaultBaseBranch is not a string', async () => {
     const projectRoot = await createTempDir('load-state-nullish')
     tempDirs.push(projectRoot)
 
@@ -91,14 +93,10 @@ describe('loadState', () => {
       'utf8'
     )
 
-    await expect(loadState(projectRoot)).resolves.toEqual({
-      defaultBaseBranch: 'main',
-      settings: { json: true, interactive: true },
-      workspaces: []
-    })
+    await expect(loadState(projectRoot)).rejects.toBeInstanceOf(InvalidProjectStateError)
   })
 
-  it('falls back to main when the default base branch is blank', async () => {
+  it('throws when the default base branch is blank', async () => {
     const projectRoot = await createTempDir('load-state-blank-branch')
     tempDirs.push(projectRoot)
 
@@ -113,10 +111,6 @@ describe('loadState', () => {
       'utf8'
     )
 
-    await expect(loadState(projectRoot)).resolves.toEqual({
-      defaultBaseBranch: 'main',
-      settings: { json: false, interactive: false },
-      workspaces: []
-    })
+    await expect(loadState(projectRoot)).rejects.toBeInstanceOf(InvalidProjectStateError)
   })
 })
